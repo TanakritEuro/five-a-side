@@ -32,10 +32,20 @@ export interface Physics {
   events: RAPIER.EventQueue;
   /** Collider handle → tag, for every collider the ball can hit. */
   tags: Map<number, ColliderTag>;
+  /** Collider handle → player id, for the player capsules. */
+  playerColliders: Map<number, number>;
+}
+
+let rapierReady: Promise<void> | null = null;
+
+/** Load Rapier's WASM once. Every world (game, tests, ghost balls) is created after this. */
+export function initRapier(): Promise<void> {
+  rapierReady ??= RAPIER.init();
+  return rapierReady;
 }
 
 export async function createPhysics(): Promise<Physics> {
-  await RAPIER.init();
+  await initRapier();
 
   const world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
   world.timestep = PHYSICS_STEP;
@@ -43,20 +53,20 @@ export async function createPhysics(): Promise<Physics> {
   const tags = new Map<number, ColliderTag>();
   const add = (tag: ColliderTag, desc: RAPIER.ColliderDesc) => tags.set(world.createCollider(desc).handle, tag);
 
-  // Ground (artificial turf: a touch less bounce than grass).
-  add(
-    'ground',
-    RAPIER.ColliderDesc.cuboid(HALF_LENGTH + 10, 0.1, HALF_WIDTH + 10)
-      .setTranslation(0, -0.1, 0)
-      .setFriction(0.6)
-      .setRestitution(0.45),
-  );
-
+  add('ground', groundDesc());
   addWalls(add);
   for (const end of [1, -1] as const) addGoal(add, end);
 
   const ball = createBall(world);
-  return { world, ball, events: new RAPIER.EventQueue(true), tags };
+  return { world, ball, events: new RAPIER.EventQueue(true), tags, playerColliders: new Map() };
+}
+
+/** The ground (artificial turf: a touch less bounce than grass). Shared with the ghost-ball worlds. */
+export function groundDesc(): RAPIER.ColliderDesc {
+  return RAPIER.ColliderDesc.cuboid(HALF_LENGTH + 10, 0.1, HALF_WIDTH + 10)
+    .setTranslation(0, -0.1, 0)
+    .setFriction(0.6)
+    .setRestitution(0.45);
 }
 
 type Add = (tag: ColliderTag, desc: RAPIER.ColliderDesc) => void;
@@ -142,8 +152,10 @@ function addGoal(add: Add, end: GoalEnd): void {
 export function createBall(world: RAPIER.World): RAPIER.RigidBody {
   const ball = world.createRigidBody(
     RAPIER.RigidBodyDesc.dynamic()
-      // No linear damping: air drag and Magnus lift are applied as forces each step (ball/aero.ts).
+      // No linear damping: drag, Magnus lift and rolling resistance are forces applied each step.
       .setAngularDamping(BALL_ANGULAR_DAMPING)
+      // Never sleeps: a resting ball must still react to players and touches.
+      .setCanSleep(false)
       .setCcdEnabled(true), // fast shots must not tunnel through posts, boards or net
   );
   world.createCollider(
@@ -161,7 +173,7 @@ export function createBall(world: RAPIER.World): RAPIER.RigidBody {
  * A player's body: a kinematic capsule moved by game code (movement and AI), which the
  * ball bounces off. Players never get pushed around by the physics engine.
  */
-export function createPlayerBody(physics: Physics, x: number, z: number): RAPIER.RigidBody {
+export function createPlayerBody(physics: Physics, id: number, x: number, z: number): RAPIER.RigidBody {
   const body = physics.world.createRigidBody(
     RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, PLAYER_HEIGHT / 2, z),
   );
@@ -171,5 +183,6 @@ export function createPlayerBody(physics: Physics, x: number, z: number): RAPIER
     body,
   );
   physics.tags.set(collider.handle, 'player');
+  physics.playerColliders.set(collider.handle, id);
   return body;
 }

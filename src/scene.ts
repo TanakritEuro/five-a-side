@@ -284,3 +284,14 @@ export function createPlayerMesh(shirt: number, shorts: number): THREE.Group {
   group.add(body, legs, head, nose);
   return group;
 }
+
+/** Ring on the ground under the player you control. */
+export function createMarker(): THREE.Mesh {
+  const marker = new THREE.Mesh(
+    new THREE.RingGeometry(PLAYER_RADIUS + 0.12, PLAYER_RADIUS + 0.24, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffe14d, transparent: true, opacity: 0.9, depthWrite: false }),
+  );
+  marker.rotation.x = -Math.PI / 2;
+  marker.renderOrder = 1;
+  return marker;
+}

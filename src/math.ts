@@ -38,3 +38,43 @@ export function gaussian(rng: Rng): number {
 export function damp(rate: number, dt: number): number {
   return 1 - Math.exp(-rate * dt);
 }
+
+export interface Quat {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
+
+export function clamp(v: number, min: number, max: number): number {
+  return v < min ? min : v > max ? max : v;
+}
+
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/** Angle wrapped into (-π, π]. */
+export function wrapAngle(a: number): number {
+  a = (a + Math.PI) % (2 * Math.PI);
+  if (a < 0) a += 2 * Math.PI;
+  return a - Math.PI;
+}
+
+/** Interpolate between two angles the short way round. */
+export function lerpAngle(a: number, b: number, t: number): number {
+  return a + wrapAngle(b - a) * t;
+}
+
+/** Unit direction on the ground for a heading (radians, 0 = +X, π/2 = +Z). */
+export function headingVec(heading: number): Vec2 {
+  return { x: Math.cos(heading), z: Math.sin(heading) };
+}
+
+/**
+ * Scale a base value by a 0–1 attribute (0.5 = average): ±`spread` at the extremes,
+ * e.g. spread 0.1 gives ×0.9 at 0 and ×1.1 at 1.
+ */
+export function attrScale(attr: number, spread: number): number {
+  return 1 + spread * (attr - 0.5) * 2;
+}

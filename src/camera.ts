@@ -1,11 +1,12 @@
 import type * as THREE from 'three';
 import { TUNING } from './config';
 import { HALF_LENGTH } from './constants';
-import { damp, type Vec3 } from './math';
+import { damp, lerp, type Vec3 } from './math';
 
 /**
- * Broadcast camera: high on the +Z touchline side, panning along the pitch to follow the
- * ball (smoothed so it doesn't jitter on every touch). Placeholder for a proper director.
+ * Broadcast camera: high on the +Z touchline side, panning along the pitch to follow a
+ * point between the controlled player and the ball (smoothed so it doesn't jitter on
+ * every touch). Placeholder for a proper director.
  */
 export class BroadcastCamera {
   private x = 0;
@@ -16,10 +17,11 @@ export class BroadcastCamera {
     this.place();
   }
 
-  update(ball: Vec3, dt: number): void {
+  update(player: Vec3, ball: Vec3, dt: number): void {
     const C = TUNING.camera;
+    const focus = lerp(player.x, ball.x, C.ballWeight);
     const limit = HALF_LENGTH * 0.6;
-    const target = Math.max(-limit, Math.min(limit, ball.x * C.follow));
+    const target = Math.max(-limit, Math.min(limit, focus * C.follow));
     this.x += (target - this.x) * damp(C.lag, dt);
     this.place();
   }
