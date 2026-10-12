@@ -1,11 +1,14 @@
 import type * as THREE from 'three';
+import { describeOutcome } from './ball/outcome';
 import { BroadcastCamera } from './camera';
+import { TUNING } from './config';
 import { PHYSICS_STEP } from './constants';
 import { Keyboard } from './input/keyboard';
 import { interpolate } from './render/interpolate';
 import { createMarker, createPlayerMesh, createScene, type GameScene } from './scene';
 import type { Command } from './sim/command';
 import type { SimEvent } from './sim/events';
+import type { RestartKind } from './sim/rules';
 import { Sim } from './sim/sim';
 import { soloLineup } from './team/lineup';
 import { TEAMS } from './team/teams';
@@ -18,6 +21,7 @@ export interface GameOptions {
 }
 
 const HINT = 'WASD: move · Shift: sprint · J: pass · K (hold): shoot';
+const RESTART_NAMES: Record<RestartKind, string> = { kickoff: 'Kick-off', kickIn: 'Kick-in', goalClearance: 'Goal clearance' };
 
 /**
  * Wires the simulation to the screen: keyboard → commands → fixed simulation steps, then
@@ -93,5 +97,22 @@ export class Game {
   }
 
   /** React to what happened in the simulation (status text now; sound and animation later). */
-  private onEvent(_e: SimEvent): void {}
+  private onEvent(e: SimEvent): void {
+    switch (e.type) {
+      case 'goal':
+        this.hud.setScore(e.score[0], e.score[1]);
+        this.hud.flash('GOAL!', TUNING.rules.goalDelay);
+        break;
+      case 'shot':
+        // Arrives after the goal event for the same shot, so "GOAL! In off the post" wins.
+        this.hud.flash(describeOutcome(e.outcome), e.outcome.kind === 'goal' ? TUNING.rules.goalDelay : 2);
+        break;
+      case 'out':
+        this.hud.flash(e.restart.kind === 'kickIn' ? 'Over the netting · Kick-in' : 'Over the netting · Goal clearance', TUNING.rules.outDelay);
+        break;
+      case 'restart':
+        this.hud.flash(RESTART_NAMES[e.restart.kind], TUNING.rules.restartFreeze + 0.4);
+        break;
+    }
+  }
 }

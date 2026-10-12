@@ -61,7 +61,7 @@ export function tryKick(p: Player, w: KickWorld): SimEvent | null {
   p.pendingKick = null;
 
   const start = { x: from.x, y: Math.max(from.y, BALL_RADIUS), z: from.z };
-  const { launch, target } =
+  const { launch, target, atGoal } =
     kick.kind === 'shoot'
       ? planShot(p, start, kick.power, w.attackDir(p.team), w.ghost, w.rng)
       : planPass(p, start, w.ghost, w.rng);
@@ -70,13 +70,15 @@ export function tryKick(p: Player, w: KickWorld): SimEvent | null {
   w.possession.kick(p.id);
   p.touchCooldown = TUNING.kick.cooldown;
   const path = predictPath(w.ghost, start, launch.velocity, launch.spin);
-  return { type: 'kick', player: p.id, kind: kick.kind, power: kick.power, target, path };
+  return { type: 'kick', player: p.id, kind: kick.kind, power: kick.power, target, atGoal, path };
 }
 
 interface Plan {
   launch: Launch;
   /** Where the kick was aimed, after error. */
   target: Vec3;
+  /** A shot at goal (rather than a pass, or a shot facing away from goal). */
+  atGoal: boolean;
 }
 
 /** A ground pass along the way the player faces, with a little error for the passer's skill. */
@@ -85,7 +87,7 @@ function planPass(p: Player, from: Vec3, ghost: Ghost, rng: Rng): Plan {
   const error = P.scatter * attrScale(1 - p.attrs.passing, P.passingSpread);
   const dir = headingVec(p.facing + gaussian(rng) * error);
   const launch = solveGroundPass(ghost, from, dir, P.length, P.arrivalSpeed);
-  return { launch, target: { x: from.x + dir.x * P.length, y: BALL_RADIUS, z: from.z + dir.z * P.length } };
+  return { launch, atGoal: false, target: { x: from.x + dir.x * P.length, y: BALL_RADIUS, z: from.z + dir.z * P.length } };
 }
 
 /** Where a shot along `facing` from `from` is aimed, before error. Exported for tests. */
@@ -139,7 +141,7 @@ function planShot(p: Player, from: Vec3, power: number, attackDir: 1 | -1, ghost
   const speed = speedForPower(power) * skill * contactSpeedFactor(contact);
   const spin = spinFromContact(contact, power, dir);
   const launch = solveLaunch(ghost, from, target, speed, spin);
-  if (loftAngle(launch.velocity) <= S.maxLoft * DEG) return { launch, target };
+  if (loftAngle(launch.velocity) <= S.maxLoft * DEG) return { launch, target, atGoal: aim.atGoal };
 
   // Too soft to reach the target in the air without lobbing it: drill it low instead.
   const tx = target.x - from.x;
@@ -153,5 +155,6 @@ function planShot(p: Player, from: Vec3, power: number, attackDir: 1 | -1, ghost
       flightTime: d / speed,
     },
     target,
+    atGoal: aim.atGoal,
   };
 }

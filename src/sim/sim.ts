@@ -1,5 +1,6 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { applyBallForces } from '../ball/forces';
+import { ShotTracker } from '../ball/outcome';
 import { Ghost } from '../ball/trajectory';
 import { BALL_RADIUS, PHYSICS_STEP } from '../constants';
 import { createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
@@ -9,8 +10,12 @@ import type { SimEvent } from './events';
 import { dribbleMove, playBall } from './dribble';
 import { tryKick, updateKickButtons } from './kick';
 import { stepLocomotion } from './locomotion';
-import { createPlayer, integratePlayer, type Player, type PlayerSpec } from './player';
+import { createPlayer, integratePlayer, placePlayer, type Player, type PlayerSpec } from './player';
 import { Possession } from './possession';
+import { Rules, type Restart, type RulesContext } from './rules';
+
+/** Players are moved at least this far (m) from the ball when it is placed for a restart. */
+const RESTART_CLEARANCE = 1;
 
 export interface SimOptions {
   seed: number;
@@ -30,10 +35,10 @@ export interface Snapshot {
 }
 
 /**
- * The whole game world, headless: physics, ball, players and (as they arrive) possession
- * and the rules. Advances only in fixed steps of `PHYSICS_STEP`, driven by one `Command`
- * per player, and takes all randomness from its seeded RNG, so the same seed and the same
- * commands always give the same match.
+ * The whole game world, headless: physics, ball, players, possession and the rules.
+ * Advances only in fixed steps of `PHYSICS_STEP`, driven by one `Command` per player, and
+ * takes all randomness from its seeded RNG, so the same seed and the same commands always
+ * give the same match.
  */
 export class Sim {
   readonly physics: Physics;
@@ -42,11 +47,16 @@ export class Sim {
   readonly ghost = new Ghost();
   readonly players: Player[];
   readonly possession = new Possession();
+  readonly rules = new Rules();
   /** Steps taken so far. */
   tick = 0;
   /** State after the previous step and after the latest one: render between the two. */
   readonly prev: Snapshot;
   readonly curr: Snapshot;
+  /** The shot in flight, if any, being watched for its outcome. */
+  private shot: { player: number; tracker: ShotTracker } | null = null;
+  /** Something was teleported this step: don't interpolate across it. */
+  private teleported = false;
 
   static async create(options: SimOptions): Promise<Sim> {
     return new Sim(await createPhysics(), options);
@@ -85,10 +95,12 @@ export class Sim {
     const events: SimEvent[] = [];
     const dt = PHYSICS_STEP;
     const { world, events: queue } = this.physics;
+    // Everyone holds still while a restart is set up.
+    const command = (p: Player) => (this.rules.frozen ? IDLE : (commands[p.id] ?? IDLE));
 
     this.possession.update(this.players, this.ball.translation());
     for (const p of this.players) {
-      const cmd = commands[p.id] ?? IDLE;
+      const cmd = command(p);
       const onBall = this.possession.owner === p.id;
       const move = dribbleMove(p, cmd.move, this.ball, this.possession);
       stepLocomotion(p, { move, sprint: cmd.sprint, onBall, pace: p.attrs.pace }, dt);
@@ -96,27 +108,104 @@ export class Sim {
       p.touchCooldown = Math.max(0, p.touchCooldown - dt);
     }
     for (const p of this.players) {
-      const cmd = commands[p.id] ?? IDLE;
+      const cmd = command(p);
       updateKickButtons(p, cmd);
+      if (!this.rules.inPlay) {
+        // The ball is dead: no kicks or touches until play restarts.
+        p.charge = null;
+        p.pendingKick = null;
+        continue;
+      }
       const event = tryKick(p, this) ?? playBall(p, this.ball, this.possession, cmd.move, this.rng, dt);
-      if (event) events.push(event);
+      if (event) this.onPlayed(event, events);
     }
 
     applyBallForces(this.ball);
     world.step(queue);
     queue.drainCollisionEvents((h1, h2, started) => {
-      if (!started) return;
-      const id = this.physics.playerColliders.get(h1) ?? this.physics.playerColliders.get(h2);
-      if (id === undefined || id === this.possession.owner) return;
-      // The kicker's own body brushing the ball as it leaves their foot isn't a deflection.
-      if (id === this.possession.lastTouch && this.players[id].touchCooldown > 0) return;
-      this.possession.deflect(id);
-      events.push({ type: 'touch', player: id, kind: 'deflect' });
+      if (started) this.onContact(h1, h2, events);
     });
+
+    const ball = this.ball.translation();
+    const restart = this.rules.update(ball, dt, this.rulesContext(), events);
+    if (restart) this.setRestart(restart);
+    if (this.shot) {
+      const outcome = this.shot.tracker.update(dt, ball, this.ball.linvel());
+      if (outcome) {
+        events.push({ type: 'shot', player: this.shot.player, outcome });
+        this.shot = null;
+      }
+    }
 
     this.tick++;
     this.writeSnapshot(this.curr);
+    if (this.teleported) {
+      copySnapshot(this.curr, this.prev); // don't draw the ball sliding back to the spot
+      this.teleported = false;
+    }
     return events;
+  }
+
+  /** A player kicked or touched the ball. */
+  private onPlayed(event: SimEvent, events: SimEvent[]): void {
+    events.push(event);
+    if (event.type === 'kick') {
+      this.shot =
+        event.kind === 'shoot' && event.atGoal
+          ? { player: event.player, tracker: new ShotTracker(this.attackDir(this.players[event.player].team)) }
+          : null;
+    } else if (event.type === 'touch' && this.shot) {
+      // Brought under control: the shot is over (reported if the woodwork kept it out).
+      const outcome = this.shot.tracker.interrupted();
+      if (outcome) events.push({ type: 'shot', player: this.shot.player, outcome });
+      this.shot = null;
+    }
+  }
+
+  /** The ball started touching collider `h1` or `h2`. */
+  private onContact(h1: number, h2: number, events: SimEvent[]): void {
+    const { tags, playerColliders } = this.physics;
+    const tag = tags.get(h1) ?? tags.get(h2);
+    if (tag === 'post' || tag === 'bar') {
+      this.shot?.tracker.onWoodwork(tag);
+      events.push({ type: 'woodwork', part: tag });
+      return;
+    }
+    const id = playerColliders.get(h1) ?? playerColliders.get(h2);
+    if (id === undefined || id === this.possession.owner || !this.rules.inPlay) return;
+    // The kicker's own body brushing the ball as it leaves their foot isn't a deflection.
+    if (id === this.possession.lastTouch && this.players[id].touchCooldown > 0) return;
+    this.possession.deflect(id);
+    events.push({ type: 'touch', player: id, kind: 'deflect' });
+  }
+
+  private rulesContext(): RulesContext {
+    const last = this.possession.lastTouch;
+    return { lastTouchTeam: last === null ? null : this.players[last].team, attackDir: (t) => this.attackDir(t) };
+  }
+
+  /** Place the ball for a restart; line everyone up for a kick-off, or clear them off the spot. */
+  private setRestart(restart: Restart): void {
+    this.placeBall(restart.at);
+    this.possession.reset();
+    this.shot = null;
+    for (const p of this.players) {
+      p.charge = null;
+      p.pendingKick = null;
+      if (restart.kind === 'kickoff') {
+        placePlayer(p, p.spec.kickoff, p.spec.kickoffFacing);
+        continue;
+      }
+      const dx = p.pos.x - restart.at.x;
+      const dz = p.pos.z - restart.at.z;
+      const d = Math.hypot(dx, dz);
+      if (d < RESTART_CLEARANCE) {
+        const ux = d > 1e-3 ? dx / d : -1;
+        const uz = d > 1e-3 ? dz / d : 0;
+        placePlayer(p, { x: restart.at.x + ux * RESTART_CLEARANCE, z: restart.at.z + uz * RESTART_CLEARANCE }, p.facing);
+      }
+    }
+    this.teleported = true;
   }
 
   private emptySnapshot(): Snapshot {

@@ -133,6 +133,22 @@ export const TUNING = {
     /** Sidespin contact (fraction of the radius) on a shot aimed near a post, curling it back in. */
     autoCurl: 0.35,
   },
+  outcome: {
+    /** Give up waiting and call a shot a miss after this many seconds of flight. */
+    maxFlightTime: 4.0,
+    /** After hitting the woodwork, settle once the ball drops below this speed (m/s)... */
+    settleSpeed: 1.0,
+    /** ...or once it has come back out this far from the goal line (m). */
+    reboundDistance: 8.0,
+  },
+  rules: {
+    /** Seconds between a goal and the kick-off. */
+    goalDelay: 2.5,
+    /** Seconds between the ball going over the netting and the restart. */
+    outDelay: 1.5,
+    /** Seconds everyone stands still at a restart before play resumes. */
+    restartFreeze: 0.6,
+  },
   ball: {
     /** Scales the Magnus force: 1 is physical, higher bends shots more. */
     curveStrength: 1.0,
