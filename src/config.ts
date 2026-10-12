@@ -174,8 +174,12 @@ export const TUNING = {
     arriveRadius: 2.5,
     /** Sprint to a target further than this (m). */
     sprintDistance: 9,
+    /** Teammates within this distance (m) push each other apart when moving to spots. */
+    separationRadius: 2.5,
     /** Close enough to a slot (m) to stand still. */
     slotTolerance: 0.4,
+    /** A receiver may get to a pass this long (s) after the ball and still take it (it rolls on into reach). */
+    receiveSlack: 0.3,
     /** Seconds before a player reacts to where the ball is going (in interception estimates). */
     reactionTime: 0.15,
     /** Re-predict the ball's path when it strays this far (m) from the last prediction. */
