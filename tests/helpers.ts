@@ -4,12 +4,14 @@ import { IDLE, type Command } from '../src/sim/command';
 import type { SimEvent } from '../src/sim/events';
 import type { PlayerSpec } from '../src/sim/player';
 import { Sim } from '../src/sim/sim';
+import { DIAMOND } from '../src/team/formation';
 
 export const STEPS_PER_SECOND = Math.round(1 / PHYSICS_STEP);
 
 /** One player for team 0 at `at`, facing `facing`. */
 export function solo(at: Vec2 = { x: -2, z: 0 }, facing = 0): PlayerSpec[] {
-  return [{ team: 0, role: 'pivot', kickoff: at, kickoffFacing: facing }];
+  const slot = DIAMOND.find((s) => s.role === 'pivot')!;
+  return [{ team: 0, role: 'pivot', slot, kickoff: at, kickoffFacing: facing }];
 }
 
 export function createSim(seed = 1, players: PlayerSpec[] = solo()): Promise<Sim> {

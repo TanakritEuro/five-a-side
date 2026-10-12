@@ -11,7 +11,7 @@ import type { Command } from './sim/command';
 import type { SimEvent } from './sim/events';
 import type { RestartKind } from './sim/rules';
 import { Sim } from './sim/sim';
-import { soloLineup } from './team/lineup';
+import { fullLineup } from './team/lineup';
 import { TEAMS } from './team/teams';
 import { Hud } from './ui/hud';
 
@@ -23,6 +23,8 @@ export interface GameOptions {
   debug: boolean;
   /** `?stats`: fps, draw calls and triangles. */
   stats: boolean;
+  /** `?aivsai`: both teams played by the AI; the keyboard drives nobody. */
+  aiVsAi: boolean;
 }
 
 const HINT = 'WASD: move · Shift: sprint · J: pass · K (hold): shoot';
@@ -42,13 +44,13 @@ export class Game {
   private readonly marker: THREE.Object3D;
   private readonly debug: DebugOverlay | null;
   private readonly stats: StatsOverlay | null;
-  /** The player the keyboard drives. */
-  private controlled = 0;
+  /** The player the keyboard drives, or null when nobody is (AI vs AI). */
+  private controlled: number | null;
   private accumulator = 0;
   private last = 0;
 
   static async create(canvas: HTMLCanvasElement, hudRoot: HTMLElement, options: GameOptions): Promise<Game> {
-    const sim = await Sim.create({ seed: options.seed, players: soloLineup() });
+    const sim = await Sim.create({ seed: options.seed, players: fullLineup(), ai: true });
     return new Game(canvas, hudRoot, sim, options);
   }
 
@@ -59,6 +61,8 @@ export class Game {
     private readonly options: GameOptions,
   ) {
     this.view = createScene(canvas);
+    // The home pivot, until switching arrives.
+    this.controlled = options.aiVsAi ? null : sim.players.findIndex((p) => p.team === 0 && p.spec.role === 'pivot');
     this.broadcast = new BroadcastCamera(this.view.camera);
     this.hud = new Hud(hudRoot, HINT);
     this.playerMeshes = sim.players.map((p) => {
@@ -84,7 +88,7 @@ export class Game {
     this.accumulator += dt * this.options.timescale;
 
     const commands: Command[] = [];
-    commands[this.controlled] = this.keyboard.command();
+    if (this.controlled !== null) commands[this.controlled] = this.keyboard.command();
     let shotPower: number | null = null;
     while (this.accumulator >= PHYSICS_STEP) {
       for (const e of this.sim.step(commands)) {
@@ -96,11 +100,13 @@ export class Game {
 
     const { sim, view } = this;
     interpolate(sim.prev, sim.curr, this.accumulator / PHYSICS_STEP, view.ball, this.playerMeshes);
-    const me = this.playerMeshes[this.controlled];
-    this.marker.position.set(me.position.x, 0.02, me.position.z);
-    this.broadcast.update(me.position, view.ball.position, dt);
-    this.hud.update(sim.players[this.controlled], dt, shotPower);
-    this.debug?.update(sim, this.controlled, me.position);
+    const me = this.controlled === null ? null : this.playerMeshes[this.controlled];
+    this.marker.visible = me !== null;
+    if (me) this.marker.position.set(me.position.x, 0.02, me.position.z);
+    // With nobody to follow, the camera follows the ball.
+    this.broadcast.update(me?.position ?? view.ball.position, view.ball.position, dt);
+    this.hud.update(this.controlled === null ? null : sim.players[this.controlled], dt, shotPower);
+    if (this.controlled !== null && me) this.debug?.update(sim, this.controlled, me.position);
 
     view.renderer.render(view.scene, view.camera);
     this.stats?.update(view.renderer, dt);

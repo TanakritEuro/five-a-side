@@ -2,7 +2,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { HALF_LENGTH, HALF_WIDTH, PLAYER_HEIGHT, PLAYER_RADIUS } from '../constants';
 import { clamp, headingVec, type Vec2 } from '../math';
 import { createPlayerBody, type Physics } from '../physics';
-import type { Role } from '../team/formation';
+import type { Role, Slot } from '../team/formation';
 import type { MoveState } from './locomotion';
 
 /** Ratings from 0 to 1; 0.5 is average. They scale the matching `TUNING` values. */
@@ -26,7 +26,9 @@ export const AVERAGE: Readonly<Attributes> = Object.freeze({
 export interface PlayerSpec {
   team: 0 | 1;
   role: Role;
-  /** Kick-off position and facing (radians, 0 = +X). */
+  /** Formation slot, in the team's own frame. */
+  slot: Slot;
+  /** First-half kick-off position and facing (radians, 0 = +X); mirrored in the second half. */
   kickoff: Vec2;
   kickoffFacing: number;
   attrs?: Attributes;
@@ -86,7 +88,7 @@ export function createPlayer(physics: Physics, id: number, spec: PlayerSpec): Pl
   };
 }
 
-/** Move the player along their velocity for `dt`, kept inside the boards. */
+/** Move the player along their velocity for `dt`, kept inside the boards. Call `syncBody` after. */
 export function integratePlayer(p: Player, dt: number): void {
   const d = headingVec(p.facing);
   p.vel.x = d.x * p.speed;
@@ -100,7 +102,11 @@ export function integratePlayer(p: Player, dt: number): void {
   if (z !== p.pos.z + p.vel.z * dt) p.vel.z = 0;
   p.pos.x = x;
   p.pos.z = z;
-  p.body.setNextKinematicTranslation({ x, y: PLAYER_HEIGHT / 2, z });
+}
+
+/** Move the player's capsule to where the player is now (after movement and separation). */
+export function syncBody(p: Player): void {
+  p.body.setNextKinematicTranslation({ x: p.pos.x, y: PLAYER_HEIGHT / 2, z: p.pos.z });
 }
 
 /** Teleport a player (kick-off, restarts), standing still. */

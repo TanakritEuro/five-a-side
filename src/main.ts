@@ -1,5 +1,5 @@
 // Entry point. URL flags: ?seed=123 (fix the random seed), ?timescale=0.25 (slow motion),
-// ?debug (overlays, and `game` on window), ?stats (fps, draw calls).
+// ?debug (overlays, and `game` on window), ?stats (fps, draw calls), ?aivsai (watch the AI).
 
 import { Game } from './game';
 
@@ -15,6 +15,7 @@ const game = await Game.create(
     timescale: Number.isFinite(timescale) && timescale > 0 ? timescale : 1,
     debug: params.has('debug'),
     stats: params.has('stats'),
+    aiVsAi: params.has('aivsai'),
   },
 );
 game.start();

@@ -1,5 +1,6 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { applyBallForces } from '../ball/forces';
+import { Ai } from '../ai/ai';
 import { ShotTracker } from '../ball/outcome';
 import { Ghost } from '../ball/trajectory';
 import { BALL_RADIUS, PHYSICS_STEP } from '../constants';
@@ -10,9 +11,10 @@ import type { SimEvent } from './events';
 import { dribbleMove, playBall } from './dribble';
 import { tryKick, updateKickButtons } from './kick';
 import { stepLocomotion } from './locomotion';
-import { createPlayer, integratePlayer, placePlayer, type Player, type PlayerSpec } from './player';
+import { createPlayer, integratePlayer, placePlayer, syncBody, type Player, type PlayerSpec } from './player';
 import { Possession } from './possession';
 import { Rules, type Restart, type RulesContext } from './rules';
+import { separatePlayers } from './separation';
 
 /** Players are moved at least this far (m) from the ball when it is placed for a restart. */
 const RESTART_CLEARANCE = 1;
@@ -20,6 +22,8 @@ const RESTART_CLEARANCE = 1;
 export interface SimOptions {
   seed: number;
   players: readonly PlayerSpec[];
+  /** Drive every player without a command with the AI (otherwise they stand still). */
+  ai?: boolean;
 }
 
 export interface PlayerSnapshot {
@@ -48,6 +52,8 @@ export class Sim {
   readonly players: Player[];
   readonly possession = new Possession();
   readonly rules = new Rules();
+  /** Drives the players nobody else is driving; null when they should stand still. */
+  readonly ai: Ai | null;
   /** Steps taken so far. */
   tick = 0;
   /** State after the previous step and after the latest one: render between the two. */
@@ -65,6 +71,7 @@ export class Sim {
   private constructor(physics: Physics, options: SimOptions) {
     this.physics = physics;
     this.rng = createRng(options.seed);
+    this.ai = options.ai ? new Ai() : null;
     this.players = options.players.map((spec, id) => createPlayer(physics, id, spec));
     this.placeBall({ x: 0, z: 0 });
     this.curr = this.emptySnapshot();
@@ -89,16 +96,21 @@ export class Sim {
     this.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 
-  /** Advance one fixed step. `commands[i]` drives player `i`; missing ones stand still. */
+  /**
+   * Advance one fixed step. `commands[i]` drives player `i`; players without a command
+   * are driven by the AI, or stand still if the sim has none.
+   */
   step(commands: readonly Command[]): SimEvent[] {
     copySnapshot(this.curr, this.prev);
     const events: SimEvent[] = [];
     const dt = PHYSICS_STEP;
     const { world, events: queue } = this.physics;
-    // Everyone holds still while a restart is set up.
-    const command = (p: Player) => (this.rules.frozen ? IDLE : (commands[p.id] ?? IDLE));
-
     this.possession.update(this.players, this.ball.translation());
+    this.ai?.update(this);
+    const resolved = this.players.map((p) => commands[p.id] ?? this.ai?.command(this, p) ?? IDLE);
+    // Everyone holds still while a restart is set up.
+    const command = (p: Player) => (this.rules.frozen ? IDLE : resolved[p.id]);
+
     for (const p of this.players) {
       const cmd = command(p);
       const onBall = this.possession.owner === p.id;
@@ -107,6 +119,8 @@ export class Sim {
       integratePlayer(p, dt);
       p.touchCooldown = Math.max(0, p.touchCooldown - dt);
     }
+    separatePlayers(this.players);
+    for (const p of this.players) syncBody(p);
     for (const p of this.players) {
       const cmd = command(p);
       updateKickButtons(p, cmd);

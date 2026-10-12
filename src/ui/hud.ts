@@ -10,6 +10,7 @@ export class Hud {
   private readonly meter: HTMLElement;
   private readonly meterFill: HTMLElement;
   private readonly stamina: HTMLElement;
+  private readonly panel: HTMLElement;
   private statusUntil = 0;
   private readonly hint: string;
   /** Seconds the meter stays up after a shot, showing the power it was struck at. */
@@ -20,6 +21,7 @@ export class Hud {
     this.scoreboard = el(root, 'div', 'scoreboard');
     this.status = el(root, 'div', 'status');
     const panel = el(root, 'div', 'panel');
+    this.panel = panel;
     this.meter = el(panel, 'div', 'meter');
     const S = TUNING.shot;
     const band = el(this.meter, 'div', 'meter-sweet');
@@ -44,13 +46,18 @@ export class Hud {
     this.statusUntil = performance.now() + seconds * 1000;
   }
 
-  /** Call once per frame with the controlled player. `shotPower` is set on the frame a shot is struck. */
-  update(p: Player, dt: number, shotPower: number | null): void {
+  /**
+   * Call once per frame with the controlled player (null when nobody is controlled).
+   * `shotPower` is set on the frame a shot is struck.
+   */
+  update(p: Player | null, dt: number, shotPower: number | null): void {
     if (this.statusUntil && performance.now() > this.statusUntil) {
       this.statusUntil = 0;
       this.status.textContent = this.hint;
     }
 
+    this.panel.classList.toggle('hidden', p === null);
+    if (!p) return;
     const charging = p.charge?.kind === 'shoot';
     if (shotPower !== null) {
       this.meterHold = 0.8;

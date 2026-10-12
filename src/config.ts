@@ -133,6 +133,34 @@ export const TUNING = {
     /** Sidespin contact (fraction of the radius) on a shot aimed near a post, curling it back in. */
     autoCurl: 0.35,
   },
+  formation: {
+    /** How far slots slide up and down the pitch with the ball (in half-lengths, per half-length the ball moves). */
+    followBall: 0.45,
+    /** How far slots slide across with the ball (in half-widths, per half-width). */
+    followBallAcross: 0.3,
+    /** Width of the shape (multiplies each slot's `across`). */
+    width: 1,
+    /** In possession the shape pushes up this far (half-lengths); out of possession it drops back. */
+    pushUp: 0.12,
+    dropBack: 0.08,
+    /** Outfield slots stay inside these fractions of the half-length and half-width. */
+    maxForward: 0.85,
+    maxAcross: 0.8,
+  },
+  ai: {
+    /** Steering: start slowing this far (m) from the target. */
+    arriveRadius: 2.5,
+    /** Sprint to a target further than this (m). */
+    sprintDistance: 9,
+    /** Close enough to a slot (m) to stand still. */
+    slotTolerance: 0.4,
+    /** The team brain re-plans every this many steps. */
+    brainInterval: 6,
+  },
+  separation: {
+    /** Minimum gap (m) kept between two players' capsules. */
+    gap: 0.05,
+  },
   outcome: {
     /** Give up waiting and call a shot a miss after this many seconds of flight. */
     maxFlightTime: 4.0,

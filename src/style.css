@@ -137,3 +137,7 @@ body {
 #debug {
   top: 46px;
 }
+
+#panel.hidden {
+  display: none;
+}

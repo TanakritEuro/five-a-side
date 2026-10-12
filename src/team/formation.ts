@@ -1,5 +1,6 @@
+import { TUNING } from '../config';
 import { HALF_LENGTH, HALF_WIDTH } from '../constants';
-import type { Vec2 } from '../math';
+import { clamp, type Vec2 } from '../math';
 
 export type Role = 'keeper' | 'defender' | 'left' | 'right' | 'pivot';
 
@@ -31,4 +32,24 @@ export function slotPosition(slot: Slot, attackDir: 1 | -1): Vec2 {
     x: attackDir * slot.forward * HALF_LENGTH,
     z: attackDir * slot.across * HALF_WIDTH,
   };
+}
+
+/**
+ * Where a slot is in open play, in world coordinates: the team's shape slides up and down
+ * the pitch and across it with the ball, pushes up when it has the ball and drops back
+ * when it hasn't. The keeper's slot doesn't move (keepers position themselves).
+ */
+export function shiftedSlot(slot: Slot, ball: Vec2, attackDir: 1 | -1, inPossession: boolean): Vec2 {
+  if (slot.role === 'keeper') return slotPosition(slot, attackDir);
+  const F = TUNING.formation;
+  // The ball in the team's own frame, -1..1.
+  const ballForward = clamp((ball.x * attackDir) / HALF_LENGTH, -1, 1);
+  const ballAcross = clamp((ball.z * attackDir) / HALF_WIDTH, -1, 1);
+  const forward = clamp(
+    slot.forward + F.followBall * ballForward + (inPossession ? F.pushUp : -F.dropBack),
+    -F.maxForward,
+    F.maxForward,
+  );
+  const across = clamp(slot.across * F.width + F.followBallAcross * ballAcross, -F.maxAcross, F.maxAcross);
+  return slotPosition({ ...slot, forward, across }, attackDir);
 }
