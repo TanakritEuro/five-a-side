@@ -28,13 +28,13 @@ export interface Option {
  *   anyone else in the way), distance, how much time they have, and whether they're facing
  *   it (they shoot the way they face);
  * - **pass** to each teammate: how safe the pass is (`passSafety`, against the level's
- *   margin), how much ground it gains, how much space and what angle on goal the receiver has;
+ *   margin) and how much better placed the receiver will be than the passer (up the
+ *   pitch, angle on goal, space: the passer's space is what the pressure leaves them);
  * - **dribble** towards goal: the space ahead, less the pressure on them.
  * Then Gaussian noise of the level's size on each, so weaker levels choose worse.
  */
 export function scoreOptions(sim: Sim, p: Player, level: AiLevel, rng: Rng): Option[] {
   const W = TUNING.decide;
-  const dir = sim.attackDir(p.team);
   const goal = attackGoal(sim, p.team);
   const opponents = sim.players.filter((o) => o.team !== p.team);
   const keeper = opponents.find((o) => o.spec.role === 'keeper');
@@ -61,11 +61,13 @@ export function scoreOptions(sim: Sim, p: Player, level: AiLevel, rng: Rng): Opt
       (0.3 + 0.7 * clamp(keeperGap / W.keeperClear, 0, 1)) *
       clamp(1 - (dist - W.shotIdeal) / (W.maxShotRange - W.shotIdeal), 0, 1) *
       (1 - 0.4 * pressure) *
-      clamp((facingAim - 0.5) / 0.5, 0, 1);
+      // They can line a shot up from side-on (the shoot plan turns them), less well than facing it.
+      (facingAim > 0 ? 0.5 + 0.5 * clamp((facingAim - 0.5) / 0.5, 0, 1) : 0);
     options.push({ kind: 'shoot', target: aim, corner, score, utility: 0 });
   }
 
-  // Passes.
+  // Passes. How good the passer's own position is, with the pressure on them as their space.
+  const here = positionValue(sim, p.pos, p.team, W.openCap * (1 - pressure));
   for (const q of sim.players) {
     if (q.team !== p.team || q.id === p.id) continue;
     const d0 = Math.hypot(q.pos.x - p.pos.x, q.pos.z - p.pos.z);
@@ -75,14 +77,10 @@ export function scoreOptions(sim: Sim, p: Player, level: AiLevel, rng: Rng): Opt
     const d = Math.hypot(target.x - p.pos.x, target.z - p.pos.z);
     const safety = passSafety(p.pos, target, launchSpeedFor(d, arrivalSpeed(d)), q, opponents);
     const safe = clamp((safety - level.passMargin) / W.safetyScale, -1, 1);
-    const progress = clamp(((target.x - p.pos.x) * dir) / HALF_LENGTH, -1, 1);
-    const open = space(sim, target, opponentTeam(p), W.openCap) / W.openCap;
-    const threat = goalAngle(target, goal) / W.fullAngle;
+    // Worth it if the receiver will be better placed than the passer is now.
+    const gain = positionValue(sim, target, p.team, W.openCap) - here;
     const keeperPenalty = q.spec.role === 'keeper' ? W.keeperPass : 0;
-    const score =
-      W.pass * (0.5 + 0.5 * safe) * (W.progress * progress + W.open * open + W.threat * clamp(threat, 0, 1) + W.passBase) -
-      keeperPenalty -
-      (safety < level.passMargin ? W.unsafe : 0);
+    const score = W.pass * (0.5 + 0.5 * safe) * (W.passBase + gain) - keeperPenalty - (safety < level.passMargin ? W.unsafe : 0);
     options.push({ kind: 'pass', target, receiver: q.id, score, utility: 0 });
   }
 
@@ -111,6 +109,19 @@ export function scoreOptions(sim: Sim, p: Player, level: AiLevel, rng: Rng): Opt
 export function decide(sim: Sim, p: Player, level: AiLevel, rng: Rng): Option {
   const options = scoreOptions(sim, p, level, rng);
   return options.reduce((best, o) => (o.utility > best.utility ? o : best));
+}
+
+/**
+ * How good a place `pos` is to have the ball, for `team`: how far up the pitch, the
+ * angle on goal, and the space round it (capped at `openCap` m).
+ */
+function positionValue(sim: Sim, pos: Vec2, team: 0 | 1, openCap: number): number {
+  const W = TUNING.decide;
+  const dir = sim.attackDir(team);
+  const forward = clamp((pos.x * dir + HALF_LENGTH) / (2 * HALF_LENGTH), 0, 1);
+  const angle = clamp(goalAngle(pos, attackGoal(sim, team)) / W.fullAngle, 0, 1);
+  const open = openCap <= 0 ? 0 : Math.min(space(sim, pos, team === 0 ? 1 : 0, W.openCap), openCap) / W.openCap;
+  return W.progress * forward + W.threat * angle + W.open * open;
 }
 
 function opponentTeam(p: Player): 0 | 1 {

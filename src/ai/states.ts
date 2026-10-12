@@ -29,8 +29,8 @@ export type AiState =
   | { kind: 'keeper' }
   /** A keeper facing a shot: wait until tick `at`, then dive towards (across, height); `done` once they have. */
   | { kind: 'dive'; across: number; height: number; at: number; done: boolean }
-  /** A keeper with the ball in their hands: hold it a moment, then throw or roll it to a teammate. */
-  | { kind: 'holding' }
+  /** A keeper with the ball in their hands: hold it a moment, then throw or roll it to teammate `to` (once chosen). */
+  | { kind: 'holding'; to: number | null }
   /** On the ball (see onball.ts). */
   | { kind: 'dribble'; plan: DribblePlan }
   /** Taking a kick-off, kick-in or goal clearance. */

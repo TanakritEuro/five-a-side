@@ -19,6 +19,8 @@ it('prints match statistics', async () => {
     const sim = await Sim.create({ seed, players: fullLineup(), ai: true, kickoff: true, levels: LEVELS });
     const perTeam = [0, 1].map(() => ({ shots: 0, wild: 0, passes: 0, saves: 0, goals: 0 }));
     const wildBy: Record<string, number> = {};
+    const goalFrom: Record<string, number> = {};
+    let lastKick = 'none';
     const counts: Record<string, number> = {};
     const longest: Record<string, number> = {};
     let lastTeam: 0 | 1 | null = null;
@@ -33,7 +35,12 @@ it('prints match statistics', async () => {
           const role = sim.players[e.player].spec.role;
           wildBy[role] = (wildBy[role] ?? 0) + 1;
         }
-        if (e.type === 'goal') perTeam[e.team].goals++;
+        if (e.type === 'kick') lastKick = `${e.kind}${e.atGoal ? '' : e.kind === 'shoot' ? '(wild)' : ''} by ${sim.players[e.player].team === 0 ? 'home' : 'away'} ${sim.players[e.player].spec.role}`;
+        if (e.type === 'goal') {
+          perTeam[e.team].goals++;
+          const key = `${e.team === 0 ? 'home' : 'away'} goal after ${lastKick}`;
+          goalFrom[key] = (goalFrom[key] ?? 0) + 1;
+        }
       }
       const o = sim.possession.owner;
       if (o !== null) {
@@ -58,6 +65,6 @@ it('prints match statistics', async () => {
       });
     }
     const round = Object.fromEntries(Object.entries(longest).map(([k, v]) => [k, +v.toFixed(1)]));
-    console.log(`seed ${seed} (${LEVELS.join(" v ")}): score ${sim.match.score.join("-")}, ${(sim.tick / 3600).toFixed(1)} min, ${turnovers} turnovers, per team ${JSON.stringify(perTeam)}, wild shots by role ${JSON.stringify(wildBy)}`, JSON.stringify(counts), "longest", JSON.stringify(round));
+    console.log(`seed ${seed} (${LEVELS.join(" v ")}): score ${sim.match.score.join("-")}, ${(sim.tick / 3600).toFixed(1)} min, ${turnovers} turnovers, per team ${JSON.stringify(perTeam)}, wild shots by role ${JSON.stringify(wildBy)}, goals ${JSON.stringify(goalFrom)}`, JSON.stringify(counts), "longest", JSON.stringify(round));
   }
 });

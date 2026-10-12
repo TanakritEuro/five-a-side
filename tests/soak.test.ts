@@ -58,10 +58,18 @@ describe('soak: a frantic player for 90 s', () => {
 /** Longest a player may stay in each AI state before it counts as stuck (s). */
 const STUCK: Partial<Record<AiState['kind'], number>> = { chase: 15, dribble: 25, press: 30, takeRestart: 5, dive: 4, holding: 5 };
 const goalsFor = [0, 0];
+const normalGoals: number[] = [];
 
 describe('soak: whole AI-vs-AI matches', () => {
-  it.each([1, 2, 3, 4])('seed %i: plays to full time without getting stuck', async (seed) => {
-    const sim = await Sim.create({ seed, players: fullLineup(), ai: true, kickoff: true });
+  it.each([
+    [1, 'normal', 'normal'],
+    [2, 'normal', 'normal'],
+    [3, 'normal', 'normal'],
+    [4, 'normal', 'normal'],
+    [5, 'hard', 'easy'],
+    [6, 'easy', 'hard'],
+  ] as const)('seed %i (%s v %s): plays to full time without getting stuck', async (seed, home, away) => {
+    const sim = await Sim.create({ seed, players: fullLineup(), ai: true, kickoff: true, levels: [home, away] });
     const ai = sim.ai!;
     let lastOwnerTeam: 0 | 1 | null = null;
     let turnovers = 0;
@@ -89,10 +97,18 @@ describe('soak: whole AI-vs-AI matches', () => {
     expect(turnovers).toBeGreaterThan(10);
     goalsFor[0] += sim.match.score[0];
     goalsFor[1] += sim.match.score[1];
+    if (home === 'normal' && away === 'normal') normalGoals.push(sim.match.score[0] + sim.match.score[1]);
   });
 
   it('sees both teams score across the matches', () => {
     expect(goalsFor[0]).toBeGreaterThan(0);
     expect(goalsFor[1]).toBeGreaterThan(0);
+  });
+
+  it('averages 3–7 goals a match between two normal teams', () => {
+    const mean = normalGoals.reduce((a, b) => a + b, 0) / normalGoals.length;
+    expect(normalGoals).toHaveLength(4);
+    expect(mean).toBeGreaterThanOrEqual(3);
+    expect(mean).toBeLessThanOrEqual(7);
   });
 });

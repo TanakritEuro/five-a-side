@@ -12,6 +12,8 @@ import type { Possession } from './possession';
 /** Height (m) and distance in front (m) at which a keeper holds a caught ball. */
 const HANDS_HEIGHT = 1.1;
 const HANDS_FORWARD = 0.35;
+/** A keeper holding the ball stays this far (m) in front of their own goal line. */
+const LINE_CLEARANCE = 0.6;
 
 /**
  * A keeper's handling: catching the ball, holding it, and throwing or rolling it out.
@@ -50,15 +52,21 @@ export class Handling {
     this.pin(keeper, ball);
   }
 
-  /** The keeper may not carry the ball out of their area: keep them inside it. */
+  /**
+   * The keeper may not carry the ball out of their area, nor (holding it in front of them)
+   * back over their own line: keep them inside the area and off the line.
+   */
   confine(keeper: Player, ownGoalX: number): void {
     const dx = keeper.pos.x - ownGoalX;
     const dz = keeper.pos.z;
     const d = Math.hypot(dx, dz);
     const max = GOAL_AREA_RADIUS - 1;
-    if (d <= max) return;
-    keeper.pos.x = ownGoalX + (dx / d) * max;
-    keeper.pos.z = (dz / d) * max;
+    if (d > max) {
+      keeper.pos.x = ownGoalX + (dx / d) * max;
+      keeper.pos.z = (dz / d) * max;
+    }
+    const out = Math.sign(-ownGoalX); // the way out of the goal, towards the pitch
+    if ((keeper.pos.x - ownGoalX) * out < LINE_CLEARANCE) keeper.pos.x = ownGoalX + out * LINE_CLEARANCE;
   }
 
   /** Let go without a kick (restarts). */

@@ -26,7 +26,7 @@ function steps(sim: Sim, n: number, commands: (i: number) => Command[] = () => [
 describe('team brain', () => {
   it('reads the phase of play from who has the ball', async () => {
     const sim = await awayAttack();
-    steps(sim, TUNING.ai.brainInterval);
+    steps(sim, TUNING.levels.normal.brainInterval);
     expect(sim.ai!.planOf(0).phase).toBe('defend');
     expect(sim.ai!.planOf(1).phase).toBe('attack');
     expect(sim.ai!.planOf(0).transition).toBe(true); // they've only just lost it
@@ -34,7 +34,7 @@ describe('team brain', () => {
 
   it('defends with one presser, one cover goal-side of them, and markers on different men', async () => {
     const sim = await awayAttack();
-    steps(sim, TUNING.ai.brainInterval);
+    steps(sim, TUNING.levels.normal.brainInterval);
     const plan = sim.ai!.planOf(0);
     expect(plan.presser).not.toBeNull();
     expect(plan.cover).not.toBeNull();
@@ -79,7 +79,7 @@ describe('team brain', () => {
 
   it('sends a teammate to press when a human calls for it (L)', async () => {
     const sim = await awayAttack();
-    steps(sim, TUNING.ai.brainInterval);
+    steps(sim, TUNING.levels.normal.brainInterval);
     const natural = sim.ai!.planOf(0).presser!;
     // The human is on the natural presser and calls for help.
     const commands = (i: number) => {
@@ -87,7 +87,7 @@ describe('team brain', () => {
       c[natural] = cmd({ press: i === 0 });
       return c;
     };
-    steps(sim, 2 * TUNING.ai.brainInterval, commands);
+    steps(sim, 2 * TUNING.levels.normal.brainInterval, commands);
     const plan = sim.ai!.planOf(0);
     expect(sim.pressCalled(0)).toBe(true);
     expect(plan.presser).not.toBe(natural);

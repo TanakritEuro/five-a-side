@@ -5,7 +5,7 @@ import { ShotTracker } from '../ball/outcome';
 import { Ghost } from '../ball/trajectory';
 import { TUNING, type KeeperLevel, type LevelName } from '../config';
 import { BALL_RADIUS, HALF_LENGTH, PHYSICS_STEP } from '../constants';
-import { createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
+import { clamp, createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
 import { createPhysics, type Physics } from '../physics';
 import { IDLE, type Command } from './command';
 import { dribbleMove, playBall } from './dribble';
@@ -14,7 +14,7 @@ import { Handling } from './handling';
 import { tryKick, updateKickButtons } from './kick';
 import { stepLocomotion } from './locomotion';
 import { Match, type MatchAction } from './match';
-import { createPlayer, integratePlayer, syncBody, teleportBody, type Player, type PlayerSpec } from './player';
+import { AVERAGE, createPlayer, integratePlayer, syncBody, teleportBody, type Player, type PlayerSpec } from './player';
 import { Possession } from './possession';
 import { chooseTaker, faceNearestTeammate, holdRestartShape, placeForRestart } from './restarts';
 import type { Restart, RulesContext } from './rules';
@@ -99,7 +99,9 @@ export class Sim {
     const [home, away] = options.levels ?? ['normal', 'normal'];
     this.keeperLevels = [TUNING.keeper.levels[TUNING.levels[home].keeper], TUNING.keeper.levels[TUNING.levels[away].keeper]];
     this.ai = options.ai ? new Ai(options.seed, [TUNING.levels[home], TUNING.levels[away]]) : null;
-    this.players = options.players.map((spec, id) => createPlayer(physics, id, spec));
+    // An AI team's level shifts its players' ratings.
+    const boost = (spec: PlayerSpec) => (options.ai ? TUNING.levels[spec.team === 0 ? home : away].attributes : 0);
+    this.players = options.players.map((spec, id) => createPlayer(physics, id, withBoost(spec, boost(spec))));
     this.match = new Match(options.kickoff ?? false);
     this.placeBall({ x: 0, z: 0 });
     if (this.match.phase.kind === 'restart') this.setRestart(this.match.phase.restart, []);
@@ -385,6 +387,14 @@ function copySnapshot(from: Snapshot, to: Snapshot): void {
   Object.assign(to.ball.pos, from.ball.pos);
   Object.assign(to.ball.rot, from.ball.rot);
   from.players.forEach((p, i) => Object.assign(to.players[i], p));
+}
+
+/** `spec` with every rating moved by `boost` (kept within 0–1). */
+function withBoost(spec: PlayerSpec, boost: number): PlayerSpec {
+  if (boost === 0) return spec;
+  const attrs = { ...AVERAGE, ...spec.attrs };
+  for (const k of Object.keys(attrs) as (keyof typeof attrs)[]) attrs[k] = clamp(attrs[k] + boost, 0, 1);
+  return { ...spec, attrs };
 }
 
 /** The x of the goal line `team` defends. */

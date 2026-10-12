@@ -31,7 +31,7 @@ export class Ai {
   private track: { path: BallPath; tick: number } | null = null;
   /** Per keeper: the ball path (by the tick it was predicted) they last dived for. */
   private readonly divedFor: number[] = [];
-  private stepsToBrain = 0;
+  private readonly stepsToBrain = [0, 0];
 
   constructor(
     seed: number,
@@ -43,12 +43,13 @@ export class Ai {
 
   /** Call once per step, before asking for commands. */
   update(sim: Sim): void {
-    if (--this.stepsToBrain <= 0) {
-      this.stepsToBrain = TUNING.ai.brainInterval;
-      const loose = sim.possession.owner === null;
-      const path = loose ? this.ballPath(sim) : null;
+    // Each team re-plans at its own level's pace.
+    for (const brain of this.brains) {
+      if (--this.stepsToBrain[brain.team] > 0) continue;
+      this.stepsToBrain[brain.team] = this.levels[brain.team].brainInterval;
+      const path = sim.possession.owner === null ? this.ballPath(sim) : null;
       const elapsed = this.track ? (sim.tick - this.track.tick) * PHYSICS_STEP : 0;
-      for (const brain of this.brains) brain.update(sim, path, elapsed);
+      brain.update(sim, path, elapsed);
     }
     for (const p of sim.players) this.set(sim, p, this.assign(sim, p));
   }
@@ -61,7 +62,7 @@ export class Ai {
     }
     if (state.kind === 'takeRestart') return takeRestart(sim, p);
     if (state.kind === 'dive') return diveCommand(sim, state);
-    if (state.kind === 'holding') return holdingCommand(sim, p);
+    if (state.kind === 'holding') return holdingCommand(sim, p, state);
     return offBall(sim, p, state, this.planOf(p.team));
   }
 
@@ -106,7 +107,10 @@ export class Ai {
    * then they guard, chase or play like anyone else.
    */
   private keeperState(sim: Sim, p: Player): AiState | null {
-    if (sim.handling.holder === p.id) return { kind: 'holding' };
+    if (sim.handling.holder === p.id) {
+      const current = this.states[p.id];
+      return current?.kind === 'holding' ? current : { kind: 'holding', to: null };
+    }
     const current = this.states[p.id];
     if (current?.kind === 'dive' && (!current.done || p.keeper?.busy)) return current;
     const track = this.track;
@@ -117,7 +121,7 @@ export class Ai {
     const shot = incomingShot(sim, p, track.path, (sim.tick - track.tick) * PHYSICS_STEP);
     if (!shot) return null;
     this.divedFor[p.id] = track.tick;
-    const dive = planDive(shot, sim.keeperLevels[p.team], this.rng);
+    const dive = planDive(shot, sim.keeperLevels[p.team], this.rng, p.pos.z);
     return { kind: 'dive', across: dive.across, height: dive.height, at: diveTick(sim, dive), done: false };
   }
 

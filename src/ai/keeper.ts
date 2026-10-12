@@ -3,11 +3,13 @@ import { TUNING, type KeeperLevel } from '../config';
 import { BALL_RADIUS, GOAL_HEIGHT, GOAL_WIDTH, HALF_LENGTH, PHYSICS_STEP } from '../constants';
 import { clamp, gaussian, type Rng, type Vec3 } from '../math';
 import { IDLE, type Command } from '../sim/command';
+import { diveDuration } from '../keeper/body';
 import type { Player } from '../sim/player';
 import type { Sim } from '../sim/sim';
-import { DEG, nearestTeammate } from './geometry';
+import { arrivalSpeed } from '../sim/kick';
+import { DEG } from './geometry';
 import { facing } from './intercept';
-import { bestPassTarget } from './onball';
+import { launchSpeedFor, passSafety } from './passing';
 import type { AiState } from './states';
 import { seek } from './steering';
 
@@ -69,7 +71,7 @@ export interface DivePlan {
  * The keeper either reads it (and goes roughly the right way, timing the dive to meet
  * it) or commits to a guess. In open play they read it more often than at a penalty.
  */
-export function planDive(shot: IncomingShot, level: KeeperLevel, rng: Rng): DivePlan {
+export function planDive(shot: IncomingShot, level: KeeperLevel, rng: Rng, from: number): DivePlan {
   const K = TUNING.keeper;
   const read = rng() < level.readChance + K.openPlayRead;
   let across: number;
@@ -89,7 +91,7 @@ export function planDive(shot: IncomingShot, level: KeeperLevel, rng: Rng): Dive
     across: clamp(across, -GOAL_WIDTH / 2, GOAL_WIDTH / 2),
     height: clamp(height, 0.1, GOAL_HEIGHT),
     // A keeper who has read it times the dive to meet the ball; a guesser just goes.
-    delay: read ? Math.max(level.reactionTime, shot.t - level.diveTime) : level.reactionTime,
+    delay: read ? Math.max(level.reactionTime, shot.t - diveDuration(Math.abs(shot.across - from), level)) : level.reactionTime,
     read,
   };
 }
@@ -107,17 +109,42 @@ export function diveCommand(sim: Sim, state: Extract<AiState, { kind: 'dive' }>)
 }
 
 /**
- * A keeper with the ball in their hands: hold it for `holdTime`, then turn to an open
- * teammate (backwards is fine: there's nobody behind) and press J to throw or roll it.
- * If nobody is open by the futsal limit, the nearest teammate gets it anyway.
+ * A keeper with the ball in their hands: hold it for `holdTime`, then turn to the
+ * teammate it's safest to give it to (by `passSafety`) and press J to throw or roll it.
+ * They wait for someone to be properly free; by the futsal limit they take the safest
+ * option going.
  */
-export function holdingCommand(sim: Sim, p: Player): Command {
+export function holdingCommand(sim: Sim, p: Player, state: Extract<AiState, { kind: 'holding' }>): Command {
   const K = TUNING.keeper;
   const held = sim.handling.heldFor;
   if (held < K.holdTime) return IDLE;
-  const to = bestPassTarget(sim, p, true) ?? (held > 2.5 * K.holdTime ? nearestTeammate(sim, p) : null);
-  if (!to) return IDLE;
+  if (state.to === null) {
+    const best = safestTeammate(sim, p);
+    if (!best || (best.safety < K.safeDistribution && held < K.maxHold)) return IDLE;
+    // Commit to them: switching target as the safety numbers flicker, they'd never turn to anyone.
+    state.to = best.player.id;
+  }
+  const to = sim.players[state.to];
   const s = seek(p, to.pos, false);
   const aimed = facing(p, to.pos, TUNING.ai.passAim * DEG);
-  return { ...IDLE, move: { x: s.move.x * 0.3, z: s.move.z * 0.3 }, pass: aimed && sim.tick % 2 === 0 };
+  // Past the futsal limit, let it go however they're facing.
+  const release = aimed || held > K.maxHold + 1;
+  return { ...IDLE, move: { x: s.move.x * 0.3, z: s.move.z * 0.3 }, pass: release && sim.tick % 2 === 0 };
+}
+
+/**
+ * The outfield teammate a ball from `p` reaches with the most margin over the opposition.
+ * Anyone right up against the keeper is ignored: a throw goes over them.
+ */
+function safestTeammate(sim: Sim, p: Player): { player: Player; safety: number } | null {
+  const opponents = sim.players.filter((o) => o.team !== p.team && Math.hypot(o.pos.x - p.pos.x, o.pos.z - p.pos.z) > TUNING.keeper.throwOver);
+  let best: { player: Player; safety: number } | null = null;
+  for (const q of sim.players) {
+    if (q.team !== p.team || q.id === p.id || q.spec.role === 'keeper') continue;
+    const d = Math.hypot(q.pos.x - p.pos.x, q.pos.z - p.pos.z);
+    if (d < TUNING.pass.minDistance) continue;
+    const safety = passSafety(p.pos, q.pos, launchSpeedFor(d, arrivalSpeed(d)), q, opponents);
+    if (!best || safety > best.safety) best = { player: q, safety };
+  }
+  return best;
 }

@@ -74,7 +74,7 @@ export class KeeperBody {
   dive(across: number, height: number, level: KeeperLevel): void {
     if (this.state.kind !== 'ready') return;
     const to = diveTargetPose(this.pose, across, height, level.maxDive);
-    this.state = { kind: 'diving', from: this.pose, to, duration: level.diveTime, elapsed: 0 };
+    this.state = { kind: 'diving', from: this.pose, to, duration: diveDuration(Math.abs(across - this.pose.x), level), elapsed: 0 };
   }
 
   /** Back on their feet at once (restarts). */
@@ -148,6 +148,14 @@ export class KeeperBody {
       arm.setRotationWrtParent(leanQuat(side * p.arms));
     });
   }
+}
+
+/**
+ * Seconds for a dive across `distance` metres: the level's full dive time for a dive at full
+ * stretch, less for a short one (a futsal goal is narrow and shots arrive quickly).
+ */
+export function diveDuration(distance: number, level: KeeperLevel): number {
+  return level.diveTime * Math.min(1, Math.max(TUNING.keeper.shortDive, distance / level.maxDive));
 }
 
 /** Centre of an arm in the body's local frame, for arm angle `angle` on `side` (−1 left, +1 right). */

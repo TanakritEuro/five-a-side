@@ -19,24 +19,31 @@ writing something that already exists.
 - `npm run build` — typecheck + production build into `dist/`
 - `npm run typecheck` — types only
 - `npm test` — Vitest
+- `npm run stats` — AI match statistics for tuning (not part of `npm test`)
 
 Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1 and 2 done (plans and notes in `docs/milestone-1.md`, `docs/milestone-2.md`).
-A full five-a-side match: ten players, the human on the home team (`?aivsai` to watch
-two AI teams). There is a kick-off, a clock that stops when the ball is dead, two
-3-minute halves with the ends swapped, and full time. Kick-ins and goal clearances
-have a taker, and opponents keep back until the kick. J passes to the best teammate
-in a cone and leads a runner. Away from the ball, J switches to the teammate best
-placed to reach it, and control switches automatically on passes and turnovers.
+Milestones 1–3 done (plans and notes in `docs/milestone-1.md` … `docs/milestone-3.md`).
+A full five-a-side match against a team AI: ten players, the human on the home team
+(`?aivsai` to watch two AI teams, `?difficulty=easy|normal|hard` for the opposition).
+There is a kick-off, a clock that stops when the ball is dead, two 3-minute halves with
+the ends swapped, and full time. Kick-ins and goal clearances have a taker.
 
-The AI is a stop-gap until Milestone 3 (`src/ai/ai.ts`). A team brain shifts the
-formation with the ball and sends one chaser per team after a loose ball, plus one
-blocker goal-side of the opposing carrier. On the ball, players run at a shooting spot
-and shoot, or pass when blocked or impatient. Keepers have no hands yet, so there are
-lots of goals. Nobody tackles until Milestone 4. Start on Milestone 3.
+- **Passing and switching:** J passes to the best teammate in a cone (leading a runner)
+  or, without the ball, switches player; switching is also automatic. L calls a teammate
+  to press. J while charging a shot cancels it.
+- **Team AI** (`src/ai/`): a team brain per team (phase of play; a presser, a cover and
+  markers when defending; support spots and a runner when attacking); a state machine
+  per player; on-ball decisions by utility (shoot, pass by safety and gain, dribble) with
+  level-dependent noise and reaction. Levels also shift ratings and the brain's pace.
+- **Keepers:** ported from the penalty game. They dive for shots (read or guess),
+  catch or parry, hold the ball in their hands, and throw or roll it out.
+
+AI vs AI at normal averages about 5 goals a match; hard beats normal beats easy (the
+soak and difficulty tests hold these). `npm run stats` prints match statistics for
+tuning. Nobody tackles yet; Milestone 4 is next.
 
 Things that aren't obvious from the code:
 - Rapier clamps angular velocity to a quarter turn per step (47 rad/s at 60 Hz). The ball
@@ -53,9 +60,20 @@ Things that aren't obvious from the code:
   - no touches while lining up a kick.
   Possession lapses if the ball is stuck beside or behind its owner. Without these, the
   soak tests find dribblers wedged in corners for minutes.
+- Players keep their bodies off a slow ball (`keepOffBall`): two chasers otherwise squeeze a
+  resting ball against the boards, lifting it out of reach of their feet.
 - `Sim.step(commands)`: players without a command are AI-driven when `SimOptions.ai`
   is set, and stand still otherwise (most unit tests). `kickoff: true` starts with a
-  kick-off rather than open play.
+  kick-off rather than open play; `levels` sets each team's AI level.
+- The AI prices passes with a closed-form rolling model (`ai/passing.ts`), not the ghost
+  ball: dv/dt = −(R + c·v²) solves exactly. Kicks themselves still use the exact solver.
+- A keeper holding the ball is the one exception to "the ball is always a free body":
+  `sim/handling.ts` pins it to their hands each step. Keepers act through `Command.dive`.
+- AI tuning is done with `npm run stats` (`LEVELS=hard,easy SEEDS=1,2,3 WATCH=chase:10`);
+  the levels in `TUNING.levels` were tuned so harder levels win, which isn't obvious:
+  slower decisions and more noise can *help* (carrying the ball further before deciding).
+- In the built-in browser pane, screenshots fail while the pane is hidden (no animation
+  frames). Claude in Chrome renders reliably for visual checks.
 - The Vite dev server sometimes keeps a stale module after big refactors (errors about
   missing exports that exist). Restart it.
 
@@ -168,17 +186,22 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/sim/rules.ts`, `restarts.ts` — goals and ball out; restart takers and where everyone stands.
 - `src/sim/control.ts` — `HumanControl`: which player the keyboard drives, switching, context buttons.
 - `src/sim/separation.ts` — players pushed apart so capsules never overlap.
-- `src/ai/` — `Ai` (team brain and per-player state machines), interception estimates, steering.
+- `src/ai/ai.ts` — `Ai`: runs the team brains and turns each player's state into a `Command`.
+- `src/ai/brain.ts`, `support.ts` — phase of play and roles; support-spot scoring and assignment.
+- `src/ai/states.ts`, `onball.ts`, `decide.ts`, `keeper.ts` — off-ball behaviours, the carrier's plans, utility decisions, keeper dives and distribution.
+- `src/ai/passing.ts`, `intercept.ts`, `steering.ts`, `geometry.ts` — rolling model and pass safety, time to reach, steering, shared helpers.
+- `src/keeper/pose.ts`, `body.ts` — the keeper's pose and dive (ported), colliders.
+- `src/sim/handling.ts` — keepers catching, holding and distributing.
 - `src/team/formation.ts` — formation slots in the team's own frame and their world positions.
 - `src/team/teams.ts`, `lineup.ts` — invented teams and kits; who's on the pitch.
 - `src/game.ts` — `Game`: keyboard → `Sim` → interpolated render, HUD and camera.
 - `src/input/keyboard.ts` — keys to `Command`s (screen-relative movement).
-- `src/render/interpolate.ts` — draws meshes between the last two steps.
+- `src/render/interpolate.ts`, `keeper.ts` — draws meshes between the last two steps; the posed keeper mesh.
 - `src/ui/hud.ts`, `src/debug.ts` — score, status, power meter, stamina; `?debug` / `?stats` overlays.
 - `src/scene.ts` — renderer, lights, pitch, markings, walls, goals, placeholder player meshes.
 - `src/camera.ts` — broadcast camera that follows the controlled player and the ball.
 - `src/main.ts` — entry point; reads the URL flags.
-- `tests/` — Vitest. `helpers.ts` has a sim factory, command helpers and a random driver.
+- `tests/` — Vitest. `helpers.ts` has a sim factory, command helpers and a random driver. `tests/stats/` is `npm run stats`.
 
 As the game grows, add `src/characters/`, `src/audio/`, `src/replay/` and the menus, as in
 the penalty game.
@@ -229,7 +252,7 @@ code to this game's axes (goal lines on X, not Z) and keep the sim/presentation 
 | Done | Launch solver with ghost ball (passes, shots) | `src/shooting/trajectory.ts` |
 | Done | Shot power curve, overpower drift, scatter | `src/shooting/power.ts`, `spin.ts` |
 | Done | Goal / woodwork outcome from contact events | `src/shooting/outcome.ts` |
-| M3 | Keeper body, dive decision, reach limit | `src/keeper/` |
+| Done | Keeper body, dive decision, reach limit | `src/keeper/` |
 | M5 | Humanoid rig, Quaternius Mannequin driver, model build script | `src/characters/rig.ts`, `skinned.ts`, `scripts/prepare-models.mjs`, `public/models/` |
 | M6 | Net ripple, ball trail | `src/net.ts`, `src/trail.ts` |
 | M6 | Synthesised crowd and sound effects | `src/audio/sound.ts` |

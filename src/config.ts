@@ -13,6 +13,10 @@ export interface AiLevel {
   passMargin: number;
   /** The keeper's level (dive reading, reach, reaction). */
   keeper: KeeperLevelName;
+  /** Added to every player's ratings (0–1 attributes), clamped: a sharper team is also quicker and more accurate. */
+  attributes: number;
+  /** Steps between the team brain's re-plans: how fast the team as a whole reacts. */
+  brainInterval: number;
 }
 
 export type KeeperLevelName = 'easy' | 'normal' | 'hard';
@@ -34,9 +38,9 @@ export interface KeeperLevel {
 export type LevelName = 'easy' | 'normal' | 'hard';
 
 const LEVELS: Record<LevelName, AiLevel> = {
-  easy: { reaction: 0.5, decisionInterval: 0.35, noise: 0.35, passMargin: -0.05, keeper: 'easy' },
-  normal: { reaction: 0.3, decisionInterval: 0.25, noise: 0.18, passMargin: 0.1, keeper: 'normal' },
-  hard: { reaction: 0.15, decisionInterval: 0.15, noise: 0.07, passMargin: 0.2, keeper: 'hard' },
+  easy: { reaction: 0.35, decisionInterval: 0.3, noise: 0.4, passMargin: -0.15, keeper: 'easy', attributes: -0.2, brainInterval: 12 },
+  normal: { reaction: 0.3, decisionInterval: 0.25, noise: 0.18, passMargin: 0.1, keeper: 'normal', attributes: 0, brainInterval: 6 },
+  hard: { reaction: 0.25, decisionInterval: 0.25, noise: 0.08, passMargin: 0.1, keeper: 'hard', attributes: 0.12, brainInterval: 4 },
 };
 
 export const TUNING = {
@@ -158,7 +162,7 @@ export const TUNING = {
     /** Extra sideways drift (m, away from the centre of the goal) at full overpower. */
     overpowerWideDrift: 1.2,
     /** Random scatter (m, standard deviation) on every shot from 10 m; it grows with distance. */
-    baseScatter: 0.15,
+    baseScatter: 0.22,
     /** Random scatter (m, standard deviation) added at full overpower, from 10 m. */
     overpowerScatter: 0.4,
     /** Bottom of the meter's sweet spot: from here to overpowerThreshold is real pace, no drift. */
@@ -254,8 +258,6 @@ export const TUNING = {
     markZone: 0.3,
     /** Seconds after a turnover that everyone hurries (sprints) to their new job. */
     transitionTime: 1,
-    /** The team brain re-plans every this many steps. */
-    brainInterval: 6,
   },
   /** AI difficulty levels (`?difficulty=`). */
   levels: LEVELS,
@@ -266,13 +268,13 @@ export const TUNING = {
     /** Angle on goal (radians) that counts as a full view of it. */
     fullAngle: 0.5,
     /** Shots: from no further than this (m), best from this close or closer. */
-    maxShotRange: 18,
+    maxShotRange: 15,
     shotIdeal: 6,
     /** A shooting lane is clear with nobody within this distance (m) of it, the keeper this far off it. */
     laneClear: 1.2,
     keeperClear: 1.2,
     /** Option weights. */
-    shoot: 2.2,
+    shoot: 3.5,
     pass: 1,
     dribble: 1,
     /** Pass terms: progress up the pitch, the receiver's space and angle on goal, and a base value. */
@@ -342,14 +344,21 @@ export const TUNING = {
     centreBand: 0.55,
     /** Highest the keeper can jump off the ground (m). */
     maxJump: 0.45,
+    /** The shortest dive takes this fraction of the full dive time. */
+    shortDive: 0.45,
     /** Seconds to drop to the ground after a dive, then to stay down before getting up. */
     landTime: 0.35,
     downTime: 0.5,
     /** React to a ball whose path crosses the goal mouth (plus this margin, m) within this long (s). */
     shotHorizon: 1.5,
     frameMargin: 0.5,
-    /** Hold a caught ball this long (s) before distributing it (futsal allows 4 s). */
+    /** Hold a caught ball at least this long (s), and at most this long (futsal allows 4 s)... */
     holdTime: 1,
+    maxHold: 3,
+    /** ...waiting for a teammate this safe (s of margin over the opposition) to throw it to. */
+    safeDistribution: 0.4,
+    /** Opponents this close (m) don't count against a throw: it goes over them. */
+    throwOver: 2.5,
     /** Distribute by throwing beyond this distance (m), rolling it out nearer. Throws travel at this horizontal speed (m/s). */
     throwDistance: 12,
     throwSpeed: 14,

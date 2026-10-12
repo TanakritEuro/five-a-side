@@ -1,5 +1,49 @@
 # Milestone 3 plan: team AI
 
+## Status: done
+
+Decided with you before starting: keepers catch and hold; difficulty applies to the
+opposing team only; aim for 3–7 goals in a normal AI-vs-AI match; L calls a press.
+
+Results (`npm run stats`, 8 seeds each):
+
+| Match-up | Goals |
+| --- | --- |
+| Normal v normal | 4.9 a match on average |
+| Hard v easy | 51–11 |
+| Hard v normal | 40–23 |
+| Normal v easy | 44–13 |
+
+Each team has about 5–14 aimed shots, 20–35 passes and 2–8 saves a match.
+
+Where the build differs from the plan below:
+
+- **Levels** do more than decision noise and reaction. They also shift every player's
+  ratings (±0.12–0.2) and how often the team brain re-plans. Decision noise and timing
+  alone didn't make hard beat easy: slower, noisier decisions turned out to *help*,
+  because the carrier took the ball closer to goal before choosing.
+- **Pass utility** is the receiver's position value (up the pitch, angle on goal,
+  space) minus the passer's, where the passer's space is what the pressure leaves them.
+  With absolute values, a sharp AI passed sideways forever and never shot.
+- **AI shots** line up behind the ball on its line to the corner and are released only
+  when the way the player faces puts the shot on goal. Otherwise about half the AI's
+  shots went nowhere near it. **J while charging cancels a shot** (for humans too); the AI
+  uses it to abandon a shot it can't line up in time.
+- **Keepers** gather a catchable loose ball with their hands, even mid-dive, and catch
+  or parry on the ball's speed *before* the contact. A short dive is quicker than a full
+  one (the penalty game's fixed dive time was too slow for a 3 m goal). Distribution
+  goes to the safest teammate, committing to them, and ignores a presser at arm's
+  length, since a throw goes over him. A keeper holding the ball can't step back over
+  his own line.
+- **Other fixes the soak and stats turned up:** markers lead their man; support spots
+  are sticky, so supporters don't swap targets; players keep their bodies off a slow
+  ball up to head height, so a wedged ball can't be held up out of reach.
+- **The `?debug` overlay** shows each player's state, the support spots, pass lanes and
+  chase points. The keeper's dive target isn't drawn yet.
+- **`npm run stats`** (`tests/stats/`) is the tuning tool: per-team shots, wild shots,
+  passes, saves and goals, what led to each goal, and the longest time in each state.
+  `WATCH=state:seconds` prints the situation when someone's been stuck.
+
 Goal: AI that plays like a team. The team brain reads the phase of play and gives out
 roles: press, cover, mark, support, run. Supporting players go to open spots. The player
 on the ball chooses between shooting, passing and dribbling by utility scores built on
