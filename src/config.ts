@@ -33,6 +33,8 @@ export const TUNING = {
   dribble: {
     /** The last player to control the ball keeps possession while within this distance of it (m). */
     possessionRange: 2,
+    /** ...and until it has been beside or behind them for this many seconds. */
+    possessionLapse: 1.5,
     /** Furthest the ball can be from a player's centre for them to play it with their feet (m). */
     reach: 0.95,
     /** Half-angle (degrees) of the cone in front of a player inside which they can play the ball. */
@@ -53,6 +55,15 @@ export const TUNING = {
      * to the ball first, aiming this many seconds ahead of it.
      */
     chaseAngle: 45,
+    /**
+     * With the ball in reach but more than this (degrees) off the way they want to go, a
+     * dribbler goes round to get behind it first, swinging this far (m) out to the side.
+     */
+    behindAngle: 70,
+    roundOffset: 0.35,
+    /** A ball within this gap (m) of the boards is pinned: a dribbler drags it out at up to `pullSpeed` (m/s). */
+    pinnedGap: 0.2,
+    pullSpeed: 3,
     chaseLead: 0.15,
     /** Seconds between touches. */
     touchCooldown: 0.2,
@@ -68,13 +79,24 @@ export const TUNING = {
   kick: {
     /** Seconds a released kick waits for the ball to come into reach before it's dropped. */
     bufferTime: 0.35,
+    /** The same for a shot (a dribbler stops touching the ball while lining one up, and needs to catch it up). */
+    shotBufferTime: 0.6,
     /** After kicking, the kicker can't touch the ball again for this long (s). */
     cooldown: 0.35,
   },
   pass: {
-    /** Ground pass (no receivers yet): how far it goes (m) and how fast it's still rolling there (m/s). */
+    /** A pass with nobody to aim at goes this far (m) along the way the passer faces. */
     length: 12,
-    arrivalSpeed: 5,
+    /** How fast a pass is still rolling when it arrives (m/s): this, plus `arrivalPerMetre` per metre of pass. */
+    arrivalSpeed: 4,
+    arrivalPerMetre: 0.12,
+    /** Teammates within this half-angle (degrees) of the passer's facing can be picked as the receiver. */
+    receiverCone: 35,
+    /** Receivers are picked between these distances (m). */
+    minDistance: 2.5,
+    maxDistance: 26,
+    /** A leading pass aims this fraction of the way to where the receiver is running to. */
+    lead: 0.8,
     /** Direction error (radians, standard deviation) for an average passer. */
     scatter: 0.035,
     /** How much the passing attribute moves that error: ±this at 0 and 1. */
@@ -154,6 +176,30 @@ export const TUNING = {
     sprintDistance: 9,
     /** Close enough to a slot (m) to stand still. */
     slotTolerance: 0.4,
+    /** Seconds before a player reacts to where the ball is going (in interception estimates). */
+    reactionTime: 0.15,
+    /** Re-predict the ball's path when it strays this far (m) from the last prediction. */
+    pathTolerance: 0.3,
+    /** AI on the ball: run at a spot this far (m) out from goal, then turn and shoot at the far corner... */
+    shootingSpot: 7,
+    /** ...and after this long (s) on the ball, pass to anyone (backwards too) or shoot from further out. */
+    patience: 6,
+    /** Shoot from within this distance (m) of the goal... */
+    shootRange: 12,
+    /** ...charging the shot to a power (0–1) between these, more from further out. */
+    shotPower: [0.62, 0.78],
+    /** An opponent this close (m) and ahead of the AI dribbler blocks the way: look for a pass. */
+    blockedDistance: 2.5,
+    /** A passing lane is open if no opponent is within this distance (m) of it. */
+    laneWidth: 1.2,
+    /** Turn to within this angle (degrees) of the receiver before passing. */
+    passAim: 12,
+    /** Keepers on the ball pass it on after this long (s). */
+    keeperHold: 0.6,
+    /** ...or clear it upfield if nobody is open after this long (s). */
+    keeperClear: 2.5,
+    /** The defender blocking the carrier stands this far (m) goal-side of the ball. */
+    blockDistance: 1.3,
     /** The team brain re-plans every this many steps. */
     brainInterval: 6,
   },

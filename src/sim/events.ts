@@ -12,8 +12,8 @@ import type { Restart } from './rules';
 export type SimEvent =
   /** A player played the ball: a dribble touch, a first touch, or it bounced off them. */
   | { type: 'touch'; player: number; kind: 'dribble' | 'receive' | 'deflect' }
-  /** A pass or shot: where it was aimed (after error) and its predicted path. */
-  | { type: 'kick'; player: number; kind: KickKind; power: number; target: Vec3; atGoal: boolean; path: BallPath }
+  /** A pass or shot: where it was aimed (after error), who a pass was for, and its predicted path. */
+  | { type: 'kick'; player: number; kind: KickKind; power: number; target: Vec3; atGoal: boolean; receiver: number | null; path: BallPath }
   /** How a shot at goal ended. */
   | { type: 'shot'; player: number; outcome: ShotOutcome }
   /** The ball hit a post or the bar. */

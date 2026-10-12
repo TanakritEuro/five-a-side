@@ -12,6 +12,8 @@ export class Possession {
   lastTouch: number | null = null;
   /** The player in control of the ball this step, or null if it is loose. */
   owner: number | null = null;
+  /** Seconds the ball has been somewhere the owner can't play it (beside or behind them). */
+  private sinceControl = 0;
   /** True once the last toucher has kicked it away, deflected it or lost it. */
   private released = true;
 
@@ -20,6 +22,7 @@ export class Possession {
     this.lastTouch = id;
     this.released = false;
     this.owner = id;
+    this.sinceControl = 0;
   }
 
   /** The ball was kicked: it's loose until someone controls it. */
@@ -44,14 +47,22 @@ export class Possession {
     this.owner = null;
   }
 
-  /** Recompute the owner from where the players and the ball are now. */
-  update(players: readonly Player[], ball: Vec3): void {
+  /**
+   * Recompute the owner from where the players and the ball are now. They lose it if it
+   * gets more than `possessionRange` away, or if it has been beside or behind them for
+   * `possessionLapse` seconds (stuck against the boards, say).
+   */
+  update(players: readonly Player[], ball: Vec3, dt: number): void {
     if (this.released || this.lastTouch === null) {
       this.owner = null;
       return;
     }
     const p = players[this.lastTouch];
-    if (Math.hypot(ball.x - p.pos.x, ball.z - p.pos.z) > TUNING.dribble.possessionRange) {
+    // A ball out ahead of a dribbler is fine; one stuck beside or behind them isn't.
+    const ahead = ballRelative(p, ball).cos >= Math.cos((TUNING.dribble.frontCone * Math.PI) / 180);
+    this.sinceControl = ahead ? 0 : this.sinceControl + dt;
+    const D = TUNING.dribble;
+    if (Math.hypot(ball.x - p.pos.x, ball.z - p.pos.z) > D.possessionRange || this.sinceControl > D.possessionLapse) {
       this.released = true;
       this.owner = null;
     } else {

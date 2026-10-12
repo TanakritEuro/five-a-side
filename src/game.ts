@@ -83,7 +83,9 @@ export class Game {
   }
 
   private frame(now: number): void {
-    const dt = Math.min((now - this.last) / 1000, 0.25);
+    // Clamped both ways: a long stall (tab hidden) shouldn't fast-forward, and a timestamp
+    // from before the last frame shouldn't run time backwards.
+    const dt = Math.min(Math.max((now - this.last) / 1000, 0), 0.25);
     this.last = now;
     this.accumulator += dt * this.options.timescale;
 

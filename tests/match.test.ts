@@ -53,8 +53,8 @@ describe('halves', () => {
     const sim = await match();
     stepUntil(sim, 3, () => sim.match.inPlay);
     stepUntil(sim, 1);
-    // Knock the ball over the netting: the clock stops until the set piece is taken.
-    sim.ball.setLinvel({ x: 0, y: 14, z: 8 }, true);
+    // Put the ball over the netting: the clock stops until the set piece is taken.
+    sim.ball.setTranslation({ x: 0, y: 7, z: 11 }, true);
     stepUntil(sim, 3, () => sim.match.phase.kind === 'out');
     const stopped = sim.match.clock.elapsed;
     stepUntil(sim, M.outDelay + 0.2);
@@ -84,10 +84,11 @@ describe('halves', () => {
     expect(sim.match.over).toBe(true);
     expect(events.filter((e) => e.type === 'halfTime')).toHaveLength(1);
     expect(events.find((e) => e.type === 'fullTime')).toMatchObject({ score: sim.match.score });
+    stepUntil(sim, 1); // let them pull up
     const before = sim.players.map((p) => ({ ...p.pos }));
     stepUntil(sim, 2);
     sim.players.forEach((p, i) => {
-      expect(Math.hypot(p.pos.x - before[i].x, p.pos.z - before[i].z)).toBeLessThan(0.3); // just coming to a stop
+      expect(Math.hypot(p.pos.x - before[i].x, p.pos.z - before[i].z)).toBeLessThan(0.01);
     });
     expect(sim.match.clock.elapsed).toBeGreaterThanOrEqual(M.halfLength);
   });

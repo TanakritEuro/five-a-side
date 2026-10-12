@@ -72,7 +72,7 @@ export class Sim {
   private constructor(physics: Physics, options: SimOptions) {
     this.physics = physics;
     this.rng = createRng(options.seed);
-    this.ai = options.ai ? new Ai() : null;
+    this.ai = options.ai ? new Ai(options.seed) : null;
     this.players = options.players.map((spec, id) => createPlayer(physics, id, spec));
     this.match = new Match(options.kickoff ?? false);
     this.placeBall({ x: 0, z: 0 });
@@ -110,7 +110,7 @@ export class Sim {
     const { world, events: queue } = this.physics;
     const match = this.match;
 
-    this.possession.update(this.players, this.ball.translation());
+    this.possession.update(this.players, this.ball.translation(), dt);
     this.ai?.update(this);
     // Nobody moves during the half-time break or after full time.
     const stopped = match.phase.kind === 'halfTime' || match.over;
@@ -119,7 +119,7 @@ export class Sim {
     for (const p of this.players) {
       const cmd = resolved[p.id];
       const onBall = this.possession.owner === p.id;
-      const move = dribbleMove(p, cmd.move, this.ball, this.possession);
+      const move = stopped ? cmd.move : dribbleMove(p, cmd.move, this.ball, this.possession);
       stepLocomotion(p, { move, sprint: cmd.sprint, onBall, pace: p.attrs.pace }, dt);
       integratePlayer(p, dt);
       p.touchCooldown = Math.max(0, p.touchCooldown - dt);

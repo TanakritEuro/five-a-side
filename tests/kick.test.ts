@@ -3,7 +3,7 @@ import { TUNING } from '../src/config';
 import { BALL_RADIUS, GOAL_HEIGHT, GOAL_WIDTH, HALF_LENGTH } from '../src/constants';
 import type { Vec3 } from '../src/math';
 import type { SimEvent } from '../src/sim/events';
-import { shotAim } from '../src/sim/kick';
+import { arrivalSpeed, shotAim } from '../src/sim/kick';
 import type { Sim } from '../src/sim/sim';
 import { cmd, createSim, run, solo, STEPS_PER_SECOND } from './helpers';
 
@@ -103,8 +103,8 @@ describe('passing', () => {
     }
     expect(arrival).not.toBeNull();
     expect(Math.abs(arrival!.z)).toBeLessThan(1.5);
-    expect(arrival!.speed).toBeGreaterThan(TUNING.pass.arrivalSpeed - 0.3);
-    expect(arrival!.speed).toBeLessThan(TUNING.pass.arrivalSpeed + 0.3);
+    expect(arrival!.speed).toBeGreaterThan(arrivalSpeed(TUNING.pass.length) - 0.3);
+    expect(arrival!.speed).toBeLessThan(arrivalSpeed(TUNING.pass.length) + 0.3);
     expect(sim.ball.translation().y).toBeLessThan(BALL_RADIUS + 0.05); // stayed on the ground
   });
 

@@ -3,7 +3,7 @@ import { applyShotError, powerFromCharge, speedForPower } from '../ball/power';
 import { contactScatter, contactSpeedFactor, spinFromContact, type Contact } from '../ball/spin';
 import { loftAngle, predictPath, solveGroundPass, solveLaunch, type Ghost, type Launch } from '../ball/trajectory';
 import { TUNING } from '../config';
-import { BALL_RADIUS, GOAL_WIDTH, HALF_LENGTH, PHYSICS_STEP } from '../constants';
+import { BALL_RADIUS, GOAL_WIDTH, HALF_LENGTH, HALF_WIDTH, PHYSICS_STEP } from '../constants';
 import { attrScale, clamp, gaussian, headingVec, lerp, type Rng, type Vec2, type Vec3 } from '../math';
 import type { Command } from './command';
 import type { SimEvent } from './events';
@@ -26,7 +26,7 @@ export function updateKickButtons(p: Player, cmd: Command): void {
     if (p.charge?.kind !== 'shoot') p.charge = { kind: 'shoot', steps: 0 };
     p.charge.steps++;
   } else if (p.charge?.kind === 'shoot') {
-    p.pendingKick = { kind: 'shoot', power: chargePower(p), stepsLeft: bufferSteps };
+    p.pendingKick = { kind: 'shoot', power: chargePower(p), stepsLeft: Math.round(TUNING.kick.shotBufferTime / PHYSICS_STEP) };
     p.charge = null;
   }
 
@@ -45,6 +45,7 @@ export interface KickWorld {
   possession: Possession;
   ghost: Ghost;
   rng: Rng;
+  players: readonly Player[];
   /** Which way a team is attacking: +1 towards +X. */
   attackDir: (team: 0 | 1) => 1 | -1;
 }
@@ -61,16 +62,17 @@ export function tryKick(p: Player, w: KickWorld): SimEvent | null {
   p.pendingKick = null;
 
   const start = { x: from.x, y: Math.max(from.y, BALL_RADIUS), z: from.z };
-  const { launch, target, atGoal } =
+  const plan =
     kick.kind === 'shoot'
-      ? planShot(p, start, kick.power, w.attackDir(p.team), w.ghost, w.rng)
-      : planPass(p, start, w.ghost, w.rng);
+      ? { ...planShot(p, start, kick.power, w.attackDir(p.team), w.ghost, w.rng), receiver: null }
+      : planPass(p, start, w);
+  const { launch, target, atGoal, receiver } = plan;
   w.ball.setLinvel(launch.velocity, true);
   w.ball.setAngvel(launch.spin, true);
   w.possession.kick(p.id);
   p.touchCooldown = TUNING.kick.cooldown;
   const path = predictPath(w.ghost, start, launch.velocity, launch.spin);
-  return { type: 'kick', player: p.id, kind: kick.kind, power: kick.power, target, atGoal, path };
+  return { type: 'kick', player: p.id, kind: kick.kind, power: kick.power, target, atGoal, receiver, path };
 }
 
 interface Plan {
@@ -81,13 +83,69 @@ interface Plan {
   atGoal: boolean;
 }
 
-/** A ground pass along the way the player faces, with a little error for the passer's skill. */
-function planPass(p: Player, from: Vec3, ghost: Ghost, rng: Rng): Plan {
+/**
+ * The teammate a pass from `from` should go to: one inside `receiverCone` of the way `p`
+ * faces and between `minDistance` and `maxDistance` away, preferring the one most in line
+ * with their facing and then the nearer. Null if nobody is in the cone.
+ */
+export function pickReceiver(p: Player, players: readonly Player[], from: Vec2): Player | null {
   const P = TUNING.pass;
+  const f = headingVec(p.facing);
+  const minCos = Math.cos(P.receiverCone * DEG);
+  let best: Player | null = null;
+  let bestScore = -Infinity;
+  for (const q of players) {
+    if (q.team !== p.team || q.id === p.id) continue;
+    const dx = q.pos.x - from.x;
+    const dz = q.pos.z - from.z;
+    const d = Math.hypot(dx, dz);
+    if (d < P.minDistance || d > P.maxDistance) continue;
+    const cos = (dx * f.x + dz * f.z) / d;
+    if (cos < minCos) continue;
+    const score = cos - d / (2 * P.maxDistance);
+    if (score > bestScore) {
+      bestScore = score;
+      best = q;
+    }
+  }
+  return best;
+}
+
+/** How fast (m/s) a pass of `distance` metres should still be rolling when it arrives. */
+export function arrivalSpeed(distance: number): number {
+  return TUNING.pass.arrivalSpeed + TUNING.pass.arrivalPerMetre * distance;
+}
+
+/**
+ * A ground pass to the best receiver (see `pickReceiver`), aimed ahead of them if they're
+ * running, or along the way the player faces if nobody's there. A little error for the
+ * passer's skill.
+ */
+function planPass(p: Player, from: Vec3, w: KickWorld): Plan & { receiver: number | null } {
+  const P = TUNING.pass;
+  const receiver = pickReceiver(p, w.players, from);
+  let aim = p.facing;
+  let distance = P.length;
+  if (receiver) {
+    // Lead them: where they'll be by the time a pass of this length gets there, roughly.
+    const d0 = Math.hypot(receiver.pos.x - from.x, receiver.pos.z - from.z);
+    const t = d0 / (arrivalSpeed(d0) + 2);
+    const maxX = HALF_LENGTH - 1;
+    const maxZ = HALF_WIDTH - 1;
+    const tx = clamp(receiver.pos.x + receiver.vel.x * t * P.lead, -maxX, maxX);
+    const tz = clamp(receiver.pos.z + receiver.vel.z * t * P.lead, -maxZ, maxZ);
+    aim = Math.atan2(tz - from.z, tx - from.x);
+    distance = Math.hypot(tx - from.x, tz - from.z);
+  }
   const error = P.scatter * attrScale(1 - p.attrs.passing, P.passingSpread);
-  const dir = headingVec(p.facing + gaussian(rng) * error);
-  const launch = solveGroundPass(ghost, from, dir, P.length, P.arrivalSpeed);
-  return { launch, atGoal: false, target: { x: from.x + dir.x * P.length, y: BALL_RADIUS, z: from.z + dir.z * P.length } };
+  const dir = headingVec(aim + gaussian(w.rng) * error);
+  const launch = solveGroundPass(w.ghost, from, dir, distance, arrivalSpeed(distance));
+  return {
+    launch,
+    atGoal: false,
+    receiver: receiver?.id ?? null,
+    target: { x: from.x + dir.x * distance, y: BALL_RADIUS, z: from.z + dir.z * distance },
+  };
 }
 
 /** Where a shot along `facing` from `from` is aimed, before error. Exported for tests. */
