@@ -3,7 +3,7 @@ import { Ai } from '../ai/ai';
 import { applyBallForces } from '../ball/forces';
 import { ShotTracker } from '../ball/outcome';
 import { Ghost } from '../ball/trajectory';
-import { TUNING } from '../config';
+import { TUNING, type LevelName } from '../config';
 import { BALL_RADIUS, PHYSICS_STEP } from '../constants';
 import { createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
 import { createPhysics, type Physics } from '../physics';
@@ -24,6 +24,8 @@ export interface SimOptions {
   players: readonly PlayerSpec[];
   /** Drive every player without a command with the AI (otherwise they stand still). */
   ai?: boolean;
+  /** Each team's AI level (default normal for both). */
+  levels?: readonly [LevelName, LevelName];
   /** Start with a kick-off (a real match) rather than straight into open play (most tests). */
   kickoff?: boolean;
 }
@@ -80,7 +82,8 @@ export class Sim {
   private constructor(physics: Physics, options: SimOptions) {
     this.physics = physics;
     this.rng = createRng(options.seed);
-    this.ai = options.ai ? new Ai(options.seed) : null;
+    const [home, away] = options.levels ?? ['normal', 'normal'];
+    this.ai = options.ai ? new Ai(options.seed, [TUNING.levels[home], TUNING.levels[away]]) : null;
     this.players = options.players.map((spec, id) => createPlayer(physics, id, spec));
     this.match = new Match(options.kickoff ?? false);
     this.placeBall({ x: 0, z: 0 });

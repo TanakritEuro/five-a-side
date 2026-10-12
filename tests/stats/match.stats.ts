@@ -2,6 +2,7 @@
 // SEEDS=1,2,3 picks the matches; WATCH=chase:10 prints the situation whenever a player
 // has been in that state for that many seconds (handy for finding where the AI sticks).
 import { it } from 'vitest';
+import type { LevelName } from '../../src/config';
 import { Sim } from '../../src/sim/sim';
 import { fullLineup } from '../../src/team/lineup';
 
@@ -10,17 +11,24 @@ declare const process: { env: Record<string, string | undefined> };
 
 const SEEDS = (process.env.SEEDS ?? '1,2,3,4').split(',').map(Number);
 const WATCH = process.env.WATCH;
+/** LEVELS=hard,easy sets the home and away levels. */
+const LEVELS = (process.env.LEVELS ?? 'normal,normal').split(',') as [LevelName, LevelName];
 
 it('prints match statistics', async () => {
   for (const seed of SEEDS) {
-    const sim = await Sim.create({ seed, players: fullLineup(), ai: true, kickoff: true });
+    const sim = await Sim.create({ seed, players: fullLineup(), ai: true, kickoff: true, levels: LEVELS });
+    const perTeam = [{ shots: 0, passes: 0, goals: 0 }, { shots: 0, passes: 0, goals: 0 }];
     const counts: Record<string, number> = {};
     const longest: Record<string, number> = {};
     let lastTeam: 0 | 1 | null = null;
     let turnovers = 0;
     let printed = 0;
     for (let i = 0; i < 60 * 60 * 10 && !sim.match.over; i++) {
-      for (const e of sim.step([])) counts[e.type] = (counts[e.type] ?? 0) + 1;
+      for (const e of sim.step([])) {
+        counts[e.type] = (counts[e.type] ?? 0) + 1;
+        if (e.type === 'kick') perTeam[sim.players[e.player].team][e.kind === 'shoot' ? 'shots' : 'passes']++;
+        if (e.type === 'goal') perTeam[e.team].goals++;
+      }
       const o = sim.possession.owner;
       if (o !== null) {
         if (lastTeam !== null && sim.players[o].team !== lastTeam) turnovers++;
@@ -44,6 +52,6 @@ it('prints match statistics', async () => {
       });
     }
     const round = Object.fromEntries(Object.entries(longest).map(([k, v]) => [k, +v.toFixed(1)]));
-    console.log(`seed ${seed}: score ${sim.match.score.join('-')}, ${(sim.tick / 3600).toFixed(1)} min, ${turnovers} turnovers`, JSON.stringify(counts), 'longest', JSON.stringify(round));
+    console.log(`seed ${seed} (${LEVELS.join(" v ")}): score ${sim.match.score.join("-")}, ${(sim.tick / 3600).toFixed(1)} min, ${turnovers} turnovers, per team ${JSON.stringify(perTeam)}`, JSON.stringify(counts), "longest", JSON.stringify(round));
   }
 });

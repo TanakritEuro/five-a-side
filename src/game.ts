@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
 import { describeOutcome } from './ball/outcome';
 import { BroadcastCamera } from './camera';
-import { TUNING } from './config';
+import { TUNING, type LevelName } from './config';
 import { PHYSICS_STEP } from './constants';
 import { DebugOverlay, StatsOverlay } from './debug';
 import { Keyboard } from './input/keyboard';
@@ -26,6 +26,8 @@ export interface GameOptions {
   stats: boolean;
   /** `?aivsai`: both teams played by the AI; the keyboard drives nobody. */
   aiVsAi: boolean;
+  /** `?difficulty=easy|normal|hard`: the opposing team's level (your teammates play at normal). */
+  difficulty: LevelName;
 }
 
 const HINT = 'WASD: move · Shift: sprint · J: pass · K (hold): shoot';
@@ -51,7 +53,13 @@ export class Game {
   private last = 0;
 
   static async create(canvas: HTMLCanvasElement, hudRoot: HTMLElement, options: GameOptions): Promise<Game> {
-    const sim = await Sim.create({ seed: options.seed, players: fullLineup(), ai: true, kickoff: true });
+    const sim = await Sim.create({
+      seed: options.seed,
+      players: fullLineup(),
+      ai: true,
+      kickoff: true,
+      levels: ['normal', options.difficulty],
+    });
     return new Game(canvas, hudRoot, sim, options);
   }
 

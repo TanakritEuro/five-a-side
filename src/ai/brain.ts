@@ -101,7 +101,7 @@ export class TeamBrain {
     const dir = sim.attackDir(this.team);
     const opponents = sim.players.filter((p) => p.team !== this.team);
     plan.spots = scoreSupportSpots(b, dir, opponents);
-    plan.supports = assignSpots(plan.spots, outfield);
+    plan.supports = assignSpots(plan.spots, outfield, this.plan.supports);
     let furthest = TUNING.support.runDistance;
     for (const [id, spot] of plan.supports) {
       const ahead = (spot.x - b.x) * dir;

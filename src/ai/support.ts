@@ -58,18 +58,35 @@ export function goalAngle(pos: Vec2, goal: Vec2): number {
 }
 
 /**
- * Hand out the best spots to `supporters`: walk down the list, skipping spots within
- * `spacing` of one already taken, and give each to the free supporter who can get there
- * soonest. Returns supporter id → spot.
+ * Hand out the best spots to `supporters`. First, anyone who already had a spot keeps
+ * it (or the best spot near it) while it's still nearly as good as the best on offer,
+ * so supporters don't swap targets every update. Then walk down the list, skipping spots
+ * within `spacing` of one already taken, and give each to the free supporter who can get
+ * there soonest. Returns supporter id → spot.
  */
-export function assignSpots(spots: readonly ScoredSpot[], supporters: readonly Player[]): Map<number, Vec2> {
+export function assignSpots(
+  spots: readonly ScoredSpot[],
+  supporters: readonly Player[],
+  previous: ReadonlyMap<number, Vec2> = new Map(),
+): Map<number, Vec2> {
   const S = TUNING.support;
   const out = new Map<number, Vec2>();
   const taken: Vec2[] = [];
+  const clear = (pos: Vec2) => !taken.some((t) => Math.hypot(t.x - pos.x, t.z - pos.z) < S.spacing);
   const free = [...supporters];
+  const best = spots[0]?.score ?? 0;
+  for (let i = free.length - 1; i >= 0; i--) {
+    const before = previous.get(free[i].id);
+    if (!before) continue;
+    const near = spots.find((s) => Math.hypot(s.pos.x - before.x, s.pos.z - before.z) < S.grid && clear(s.pos));
+    if (!near || near.score < best - S.stickiness) continue;
+    out.set(free[i].id, near.pos);
+    taken.push(near.pos);
+    free.splice(i, 1);
+  }
   for (const spot of spots) {
     if (free.length === 0) break;
-    if (taken.some((t) => Math.hypot(t.x - spot.pos.x, t.z - spot.pos.z) < S.spacing)) continue;
+    if (!clear(spot.pos)) continue;
     let best = 0;
     let bestT = Infinity;
     free.forEach((p, i) => {

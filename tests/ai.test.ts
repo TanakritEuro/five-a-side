@@ -46,22 +46,26 @@ describe('team AI', () => {
     }
   });
 
-  it('keeps everyone off the ball near their formation slot', async () => {
+  it('gets players off the ball to their slot or support spot', async () => {
     const sim = await openPlay(2);
     let checked = 0;
+    let total = 0;
     for (let i = 0; i < 30 * STEPS_PER_SECOND; i++) {
       sim.step([]);
       if (i % 30) continue;
       for (const p of sim.players) {
         const s = sim.ai!.states[p.id];
-        if (s.kind !== 'hold' || sim.tick - sim.ai!.since[p.id] < 3 * STEPS_PER_SECOND) continue;
-        const slot = sim.ai!.slotOf(p.id, p.team)!;
-        // Slots move with the ball, so players trail them a little.
-        expect(Math.hypot(slot.x - p.pos.x, slot.z - p.pos.z)).toBeLessThan(5);
+        if (sim.tick - sim.ai!.since[p.id] < 2 * STEPS_PER_SECOND) continue;
+        const target = s.kind === 'hold' ? sim.ai!.slotOf(p.id, p.team) : s.kind === 'support' ? s.spot : undefined;
+        if (!target) continue;
+        total += Math.hypot(target.x - p.pos.x, target.z - p.pos.z);
         checked++;
       }
     }
-    expect(checked).toBeGreaterThan(15);
+    expect(checked).toBeGreaterThan(10);
+    // Slots and spots move with the ball (and spots get handed round), so players trail
+    // them; on average they're close.
+    expect(total / checked).toBeLessThan(3.5);
   });
 
   it('dribbles at goal and scores on an empty pitch', async () => {

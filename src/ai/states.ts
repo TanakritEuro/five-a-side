@@ -33,8 +33,8 @@ export type AiState =
   | { kind: 'takeRestart' };
 
 export type DribblePlan =
-  /** Run at goal, aiming for one corner (+1 or -1 across the goal). */
-  | { kind: 'run'; corner: 1 | -1 }
+  /** Carry it at goal, aiming for one corner (+1 or -1 across the goal); decide again at tick `nextDecision`. */
+  | { kind: 'run'; corner: 1 | -1; nextDecision: number }
   /** Charging a shot: hold K for `hold` steps, then let go. */
   | { kind: 'shoot'; corner: 1 | -1; hold: number }
   /** Turning to pass to teammate `to`; give up after `stepsLeft`. */

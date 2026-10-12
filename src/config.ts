@@ -1,6 +1,29 @@
 // Gameplay tuning values. Everything you might want to tweak while playtesting lives
 // here, so feel can be adjusted without hunting through the code.
 
+/** How sharp an AI team is. See `TUNING.levels`. */
+export interface AiLevel {
+  /** Seconds after getting the ball before the first decision on it. */
+  reaction: number;
+  /** Seconds between decisions on the ball. */
+  decisionInterval: number;
+  /** Gaussian noise (standard deviation) on option utilities: bigger picks worse options more often. */
+  noise: number;
+  /** How safe (s of margin over the defence) a pass must look before it's considered on. */
+  passMargin: number;
+  /** The keeper's level (dive reading, reach, reaction). */
+  keeper: KeeperLevelName;
+}
+
+export type KeeperLevelName = 'easy' | 'normal' | 'hard';
+export type LevelName = 'easy' | 'normal' | 'hard';
+
+const LEVELS: Record<LevelName, AiLevel> = {
+  easy: { reaction: 0.5, decisionInterval: 0.35, noise: 0.35, passMargin: -0.05, keeper: 'easy' },
+  normal: { reaction: 0.3, decisionInterval: 0.25, noise: 0.18, passMargin: 0.1, keeper: 'normal' },
+  hard: { reaction: 0.15, decisionInterval: 0.15, noise: 0.07, passMargin: 0.2, keeper: 'hard' },
+};
+
 export const TUNING = {
   locomotion: {
     /** Top speeds (m/s) for an average player. Real five-a-side: jog ~5, flat-out ~7.5. */
@@ -186,15 +209,13 @@ export const TUNING = {
     reactionTime: 0.15,
     /** Re-predict the ball's path when it strays this far (m) from the last prediction. */
     pathTolerance: 0.3,
-    /** AI on the ball: run at a spot this far (m) out from goal, then turn and shoot at the far corner... */
+    /** AI on the ball: carry it to a spot this far (m) out from goal, then turn to the far corner. */
     shootingSpot: 7,
-    /** ...and after this long (s) on the ball, pass to anyone (backwards too) or shoot from further out. */
-    patience: 6,
-    /** Shoot from within this distance (m) of the goal... */
+    /** AI shot power rises from `shotPower[0]` up close to `shotPower[1]` from this far out (m). */
     shootRange: 12,
-    /** ...charging the shot to a power (0–1) between these, more from further out. */
+    /** Power (0–1) range for AI shots. */
     shotPower: [0.62, 0.78],
-    /** An opponent this close (m) and ahead of the AI dribbler blocks the way: look for a pass. */
+    /** An opponent this close (m) and ahead of the AI dribbler is in the way: go round them. */
     blockedDistance: 2.5,
     /** A passing lane is open if no opponent is within this distance (m) of it. */
     laneWidth: 1.2,
@@ -217,6 +238,40 @@ export const TUNING = {
     /** The team brain re-plans every this many steps. */
     brainInterval: 6,
   },
+  /** AI difficulty levels (`?difficulty=`). */
+  levels: LEVELS,
+  /** Utility weights for the AI's on-ball decisions (ai/decide.ts). */
+  decide: {
+    /** Opponents within this distance (m) put the player under pressure. */
+    pressureRange: 3,
+    /** Angle on goal (radians) that counts as a full view of it. */
+    fullAngle: 0.5,
+    /** Shots: from no further than this (m), best from this close or closer. */
+    maxShotRange: 18,
+    shotIdeal: 6,
+    /** A shooting lane is clear with nobody within this distance (m) of it, the keeper this far off it. */
+    laneClear: 1.2,
+    keeperClear: 1.2,
+    /** Option weights. */
+    shoot: 2.2,
+    pass: 1,
+    dribble: 1,
+    /** Pass terms: progress up the pitch, the receiver's space and angle on goal, and a base value. */
+    progress: 1.2,
+    open: 0.5,
+    threat: 0.6,
+    passBase: 0.3,
+    /** Seconds of pass safety over the margin that count as fully safe. */
+    safetyScale: 0.5,
+    /** The receiver's space counts up to this (m). */
+    openCap: 5,
+    /** Subtracted from passes back to the keeper, and from passes that don't look safe. */
+    keeperPass: 0.4,
+    unsafe: 1.5,
+    /** Dribbling: space ahead counts up to this (m), within this half-angle (degrees) of the way to goal. */
+    spaceAhead: 6,
+    aheadCone: 40,
+  },
   support: {
     /** Candidate spots: a grid this many metres apart, from this far behind the ball, kept this far off the boards. */
     grid: 3,
@@ -230,6 +285,8 @@ export const TUNING = {
     spaceCap: 5,
     /** Supporters take spots at least this far (m) apart. */
     spacing: 4.5,
+    /** A supporter keeps their spot while it scores within this much of the best spot. */
+    stickiness: 0.6,
     /** Score weights: pass safety, angle on goal, passing distance, space, progress. */
     wSafety: 2,
     wAngle: 2,
@@ -246,7 +303,7 @@ export const TUNING = {
     gap: 0.05,
     /** Players keep their bodies off a ball moving slower than this (m/s) and lower than this (m). */
     ballClearSpeed: 1,
-    ballClearHeight: 1,
+    ballClearHeight: 2,
   },
   outcome: {
     /** Give up waiting and call a shot a miss after this many seconds of flight. */

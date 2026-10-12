@@ -1,5 +1,5 @@
 import { predictPath, type BallPath } from '../ball/trajectory';
-import { TUNING } from '../config';
+import { TUNING, type AiLevel } from '../config';
 import { PHYSICS_STEP } from '../constants';
 import { createRng, type Rng, type Vec2 } from '../math';
 import { IDLE, type Command } from '../sim/command';
@@ -30,7 +30,11 @@ export class Ai {
   private track: { path: BallPath; tick: number } | null = null;
   private stepsToBrain = 0;
 
-  constructor(seed: number) {
+  constructor(
+    seed: number,
+    /** Each team's difficulty level. */
+    readonly levels: readonly [AiLevel, AiLevel],
+  ) {
     this.rng = createRng(seed ^ 0x5bd1e995);
   }
 
@@ -49,7 +53,9 @@ export class Ai {
   command(sim: Sim, p: Player): Command {
     const state = this.states[p.id];
     if (!state) return IDLE;
-    if (state.kind === 'dribble') return dribble(sim, p, state, (sim.tick - this.since[p.id]) * PHYSICS_STEP, this.rng);
+    if (state.kind === 'dribble') {
+      return dribble(sim, p, state, (sim.tick - this.since[p.id]) * PHYSICS_STEP, { rng: this.rng, level: this.levels[p.team] });
+    }
     if (state.kind === 'takeRestart') return takeRestart(sim, p);
     return offBall(sim, p, state, this.planOf(p.team));
   }

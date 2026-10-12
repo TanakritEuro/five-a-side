@@ -47,7 +47,13 @@ describe('team brain', () => {
     expect([plan.presser, plan.cover, ...plan.marks.keys()]).not.toContain(keeper);
 
     // After a couple of seconds the cover is between the ball and the home goal, behind the presser.
-    steps(sim, 120);
+    // The carrier (driven by a human here) holds the ball while the defence sets.
+    const carrier = byRole(sim, 1, 'pivot').id;
+    steps(sim, 120, () => {
+      const c: Command[] = [];
+      c[carrier] = cmd();
+      return c;
+    });
     const after = sim.ai!.planOf(0);
     const goalX = -HALF_LENGTH;
     const distToGoal = (id: number) => Math.abs(sim.players[id].pos.x - goalX);

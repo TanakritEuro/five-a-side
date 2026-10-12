@@ -1,11 +1,13 @@
 // Entry point. URL flags: ?seed=123 (fix the random seed), ?timescale=0.25 (slow motion),
-// ?debug (overlays, and `game` on window), ?stats (fps, draw calls), ?aivsai (watch the AI).
+// ?debug (overlays, and `game` on window), ?stats (fps, draw calls), ?aivsai (watch the AI),
+// ?difficulty=easy|normal|hard (the opposing team).
 
 import { Game } from './game';
 
 const params = new URLSearchParams(location.search);
 const seedParam = params.get('seed');
 const timescale = Number(params.get('timescale') ?? 1);
+const difficulty = params.get('difficulty');
 
 const game = await Game.create(
   document.querySelector<HTMLCanvasElement>('#game')!,
@@ -16,6 +18,7 @@ const game = await Game.create(
     debug: params.has('debug'),
     stats: params.has('stats'),
     aiVsAi: params.has('aivsai'),
+    difficulty: difficulty === 'easy' || difficulty === 'hard' ? difficulty : 'normal',
   },
 );
 game.start();
