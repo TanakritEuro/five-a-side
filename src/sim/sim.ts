@@ -7,6 +7,7 @@ import { createPhysics, type Physics } from '../physics';
 import { IDLE, type Command } from './command';
 import type { SimEvent } from './events';
 import { dribbleMove, playBall } from './dribble';
+import { tryKick, updateKickButtons } from './kick';
 import { stepLocomotion } from './locomotion';
 import { createPlayer, integratePlayer, type Player, type PlayerSpec } from './player';
 import { Possession } from './possession';
@@ -66,6 +67,11 @@ export class Sim {
     return this.physics.ball;
   }
 
+  /** Which way a team is attacking: +1 towards +X. The home team (0) attacks +X first. */
+  attackDir(team: 0 | 1): 1 | -1 {
+    return team === 0 ? 1 : -1;
+  }
+
   /** Put the ball down at rest on the ground at `at`. */
   placeBall(at: Vec2): void {
     this.ball.setTranslation({ x: at.x, y: BALL_RADIUS, z: at.z }, true);
@@ -90,8 +96,10 @@ export class Sim {
       p.touchCooldown = Math.max(0, p.touchCooldown - dt);
     }
     for (const p of this.players) {
-      const touch = playBall(p, this.ball, this.possession, (commands[p.id] ?? IDLE).move, this.rng, dt);
-      if (touch) events.push(touch);
+      const cmd = commands[p.id] ?? IDLE;
+      updateKickButtons(p, cmd);
+      const event = tryKick(p, this) ?? playBall(p, this.ball, this.possession, cmd.move, this.rng, dt);
+      if (event) events.push(event);
     }
 
     applyBallForces(this.ball);
@@ -100,6 +108,8 @@ export class Sim {
       if (!started) return;
       const id = this.physics.playerColliders.get(h1) ?? this.physics.playerColliders.get(h2);
       if (id === undefined || id === this.possession.owner) return;
+      // The kicker's own body brushing the ball as it leaves their foot isn't a deflection.
+      if (id === this.possession.lastTouch && this.players[id].touchCooldown > 0) return;
       this.possession.deflect(id);
       events.push({ type: 'touch', player: id, kind: 'deflect' });
     });

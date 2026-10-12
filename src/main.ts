@@ -9,10 +9,7 @@ const timescale = Number(params.get('timescale') ?? 1);
 
 const game = await Game.create(
   document.querySelector<HTMLCanvasElement>('#game')!,
-  {
-    scoreboard: document.querySelector<HTMLElement>('#scoreboard')!,
-    status: document.querySelector<HTMLElement>('#status')!,
-  },
+  document.querySelector<HTMLElement>('#hud')!,
   {
     seed: seedParam !== null ? Number(seedParam) : Date.now(),
     timescale: Number.isFinite(timescale) && timescale > 0 ? timescale : 1,

@@ -55,6 +55,8 @@ export function createScene(canvas: HTMLCanvasElement): GameScene {
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    // The pixel ratio changes too when the window moves to another screen or is zoomed.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 

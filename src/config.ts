@@ -65,6 +65,74 @@ export const TUNING = {
     /** Fraction of the incoming relative speed left after a controlling first touch. */
     receiveKeep: 0.15,
   },
+  kick: {
+    /** Seconds a released kick waits for the ball to come into reach before it's dropped. */
+    bufferTime: 0.35,
+    /** After kicking, the kicker can't touch the ball again for this long (s). */
+    cooldown: 0.35,
+  },
+  pass: {
+    /** Ground pass (no receivers yet): how far it goes (m) and how fast it's still rolling there (m/s). */
+    length: 12,
+    arrivalSpeed: 5,
+    /** Direction error (radians, standard deviation) for an average passer. */
+    scatter: 0.035,
+    /** How much the passing attribute moves that error: ±this at 0 and 1. */
+    passingSpread: 0.5,
+  },
+  shot: {
+    /** Seconds of holding the button to go from zero to full power. */
+    chargeTime: 1.0,
+    /** Ball speed (m/s) at zero and full power. */
+    minSpeed: 14,
+    maxSpeed: 30,
+    /**
+     * Power (0–1) above which the shot starts to lose accuracy. Between this and full
+     * power the error ramps up from nothing to the full drift values below.
+     */
+    overpowerThreshold: 0.8,
+    /** Exponent applied to the overpower fraction: >1 keeps a little overpower forgiving. */
+    overpowerCurve: 1.6,
+    /** Extra height (m) added to the target at full overpower. */
+    overpowerHighDrift: 1.4,
+    /** Extra sideways drift (m, away from the centre of the goal) at full overpower. */
+    overpowerWideDrift: 1.2,
+    /** Random scatter (m, standard deviation) on every shot from 10 m; it grows with distance. */
+    baseScatter: 0.15,
+    /** Random scatter (m, standard deviation) added at full overpower, from 10 m. */
+    overpowerScatter: 0.4,
+    /** Bottom of the meter's sweet spot: from here to overpowerThreshold is real pace, no drift. */
+    sweetSpot: 0.6,
+    /** Target height (m) at the goal line at zero and full power. */
+    minHeight: 0.3,
+    maxHeight: 1.4,
+    /** Facing within this far (m) outside a post counts as shooting at goal: aim inside the post. */
+    aimMargin: 2.5,
+    /** Aim no closer than this (m) to the inside of a post. */
+    postInset: 0.35,
+    /** A shot not at goal is aimed this far (m) along the facing direction. */
+    range: 25,
+    /**
+     * Steepest launch (degrees) for an aimed shot. A soft shot from distance would have to
+     * be lobbed to reach the target, so it's hit as a low drive along the ground instead.
+     */
+    maxLoft: 15,
+    lowDriveLoft: 3,
+    /** How much the shooting attribute moves pace (±this) and scatter (±2× this). */
+    shootingSpread: 0.08,
+  },
+  spin: {
+    /** Spin (rad/s) from striking the edge of the contact circle at full power. Rapier caps spin at 47. */
+    maxSpin: 45,
+    /** Furthest the contact point can go from the centre (fraction of the radius). */
+    maxOffset: 0.8,
+    /** Fraction of the ball speed lost at maximum offset (it scales with offset squared). */
+    powerLoss: 0.1,
+    /** Extra random scatter (m, standard deviation) at maximum offset. */
+    extraScatter: 0.25,
+    /** Sidespin contact (fraction of the radius) on a shot aimed near a post, curling it back in. */
+    autoCurl: 0.35,
+  },
   ball: {
     /** Scales the Magnus force: 1 is physical, higher bends shots more. */
     curveStrength: 1.0,

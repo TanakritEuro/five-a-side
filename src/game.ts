@@ -5,9 +5,11 @@ import { Keyboard } from './input/keyboard';
 import { interpolate } from './render/interpolate';
 import { createMarker, createPlayerMesh, createScene, type GameScene } from './scene';
 import type { Command } from './sim/command';
+import type { SimEvent } from './sim/events';
 import { Sim } from './sim/sim';
 import { soloLineup } from './team/lineup';
 import { TEAMS } from './team/teams';
+import { Hud } from './ui/hud';
 
 export interface GameOptions {
   seed: number;
@@ -15,10 +17,7 @@ export interface GameOptions {
   timescale: number;
 }
 
-export interface Hud {
-  scoreboard: HTMLElement;
-  status: HTMLElement;
-}
+const HINT = 'WASD: move · Shift: sprint · J: pass · K (hold): shoot';
 
 /**
  * Wires the simulation to the screen: keyboard → commands → fixed simulation steps, then
@@ -29,6 +28,7 @@ export class Game {
   private readonly view: GameScene;
   private readonly broadcast: BroadcastCamera;
   private readonly keyboard = new Keyboard();
+  private readonly hud: Hud;
   private readonly playerMeshes: THREE.Object3D[];
   private readonly marker: THREE.Object3D;
   /** The player the keyboard drives. */
@@ -36,19 +36,20 @@ export class Game {
   private accumulator = 0;
   private last = 0;
 
-  static async create(canvas: HTMLCanvasElement, hud: Hud, options: GameOptions): Promise<Game> {
+  static async create(canvas: HTMLCanvasElement, hudRoot: HTMLElement, options: GameOptions): Promise<Game> {
     const sim = await Sim.create({ seed: options.seed, players: soloLineup() });
-    return new Game(canvas, hud, sim, options);
+    return new Game(canvas, hudRoot, sim, options);
   }
 
   private constructor(
     canvas: HTMLCanvasElement,
-    hud: Hud,
+    hudRoot: HTMLElement,
     readonly sim: Sim,
     private readonly options: GameOptions,
   ) {
     this.view = createScene(canvas);
     this.broadcast = new BroadcastCamera(this.view.camera);
+    this.hud = new Hud(hudRoot, HINT);
     this.playerMeshes = sim.players.map((p) => {
       const team = TEAMS[p.team];
       const mesh = createPlayerMesh(p.spec.role === 'keeper' ? team.keeperShirt : team.shirt, team.shorts);
@@ -57,8 +58,6 @@ export class Game {
     });
     this.marker = createMarker();
     this.view.scene.add(this.marker);
-    hud.scoreboard.textContent = `${TEAMS[0].short} 0 – 0 ${TEAMS[1].short}`;
-    hud.status.textContent = 'WASD / arrows: move · Shift: sprint';
   }
 
   start(): void {
@@ -73,8 +72,12 @@ export class Game {
 
     const commands: Command[] = [];
     commands[this.controlled] = this.keyboard.command();
+    let shotPower: number | null = null;
     while (this.accumulator >= PHYSICS_STEP) {
-      this.sim.step(commands);
+      for (const e of this.sim.step(commands)) {
+        if (e.type === 'kick' && e.kind === 'shoot' && e.player === this.controlled) shotPower = e.power;
+        this.onEvent(e);
+      }
       this.accumulator -= PHYSICS_STEP;
     }
 
@@ -83,8 +86,12 @@ export class Game {
     const me = this.playerMeshes[this.controlled];
     this.marker.position.set(me.position.x, 0.02, me.position.z);
     this.broadcast.update(me.position, view.ball.position, dt);
+    this.hud.update(sim.players[this.controlled], dt, shotPower);
 
     view.renderer.render(view.scene, view.camera);
     requestAnimationFrame((t) => this.frame(t));
   }
+
+  /** React to what happened in the simulation (status text now; sound and animation later). */
+  private onEvent(_e: SimEvent): void {}
 }
