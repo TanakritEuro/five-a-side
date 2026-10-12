@@ -33,6 +33,13 @@ export const TUNING = {
   ball: {
     /** Scales the Magnus force: 1 is physical, higher bends shots more. */
     curveStrength: 1.0,
+    /** Deceleration (m/s²) of a ball rolling on the turf. Rapier has none of its own. */
+    rollingResistance: 1.0,
+    /**
+     * Horizontal speed lost on landing per m/s of vertical impact speed: friction μ times
+     * (1 + restitution). A low drive keeps most of its pace; a dropping ball checks up.
+     */
+    bounceGrip: 0.6,
     /** Cap on the lift coefficient, however fast the ball spins. */
     maxLiftCoefficient: 0.35,
     /** Bounce off the kickboards (combined with the ball's own via Min). */

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { applyAero } from '../src/ball/aero';
+import { applyBallForces } from '../src/ball/forces';
 import { BALL_RADIUS, GOAL_DEPTH, HALF_LENGTH, HALF_WIDTH, PHYSICS_STEP } from '../src/constants';
 import { createPhysics, type Physics } from '../src/physics';
 import { DIAMOND, slotPosition } from '../src/team/formation';
@@ -18,7 +18,7 @@ function play(x: number, z: number, v: { x: number; y: number; z: number }, seco
   ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
   let maxAbsZ = 0;
   for (let i = 0; i < seconds / PHYSICS_STEP; i++) {
-    applyAero(ball);
+    applyBallForces(ball);
     world.step(events);
     events.drainCollisionEvents(() => {});
     maxAbsZ = Math.max(maxAbsZ, Math.abs(ball.translation().z));

@@ -61,11 +61,16 @@ export async function createPhysics(): Promise<Physics> {
   return { world, ball, events: new RAPIER.EventQueue(true), tags, playerColliders: new Map() };
 }
 
-/** The ground (artificial turf: a touch less bounce than grass). Shared with the ghost-ball worlds. */
+/**
+ * The ground (artificial turf: a touch less bounce than grass). Shared with the ghost-ball
+ * worlds. No friction with the ball: rolling, and the turf's grip on a bounce, are
+ * modelled in ball/forces.ts instead, because Rapier caps how fast the ball can spin.
+ */
 export function groundDesc(): RAPIER.ColliderDesc {
   return RAPIER.ColliderDesc.cuboid(HALF_LENGTH + 10, 0.1, HALF_WIDTH + 10)
     .setTranslation(0, -0.1, 0)
-    .setFriction(0.6)
+    .setFriction(0)
+    .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
     .setRestitution(0.45);
 }
 

@@ -1,5 +1,6 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
-import { applyAero } from '../ball/aero';
+import { applyBallForces } from '../ball/forces';
+import { Ghost } from '../ball/trajectory';
 import { BALL_RADIUS, PHYSICS_STEP } from '../constants';
 import { createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
 import { createPhysics, type Physics } from '../physics';
@@ -34,6 +35,8 @@ export interface Snapshot {
 export class Sim {
   readonly physics: Physics;
   readonly rng: Rng;
+  /** Ghost-ball worlds for predicting kicks. */
+  readonly ghost = new Ghost();
   readonly players: Player[];
   /** Steps taken so far. */
   tick = 0;
@@ -80,7 +83,7 @@ export class Sim {
     }
 
     const { world, events: queue } = this.physics;
-    applyAero(this.ball);
+    applyBallForces(this.ball);
     world.step(queue);
     queue.drainCollisionEvents(() => {});
 
