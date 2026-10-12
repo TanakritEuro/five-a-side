@@ -1,0 +1,229 @@
+# Five-a-Side
+
+A 3D browser five-a-side football game: two teams of five (four outfield players and a
+keeper) in a walled cage. The player controls one footballer at a time on their team and
+switches between them; everyone else is AI. Matches are two short halves.
+
+Built with Three.js (rendering), Rapier (physics, `@dimforge/rapier3d-compat`),
+TypeScript, Vite and Vitest. No backend.
+
+This is the follow-up to `../penalty-shootout` (same author, same stack, finished).
+Much of the ball physics, character, audio, replay and online code there can be ported;
+see **Porting from the penalty game** below. Read the relevant files there before
+writing something that already exists.
+
+## Commands
+
+- `npm install` — first-time setup
+- `npm run dev` — dev server at http://localhost:5173 (hot reload)
+- `npm run build` — typecheck + production build into `dist/`
+- `npm run typecheck` — types only
+- `npm test` — Vitest
+
+Requires Node 20.19+ or 22.12+ (Vite 8).
+
+## Current state
+
+Scaffold only. `src/main.ts` renders the cage (boards, netting, markings), both goals
+and two teams of placeholder capsule players standing in the diamond formation. Space
+fires a random test shot with curl from where the ball lies, R resets it to the centre
+spot, and goals are counted for either end. The players have kinematic colliders but
+don't move. A broadcast camera follows the ball along the pitch. `tests/arena.test.ts`
+checks the boards, nets and formation. Start with Milestone 1.
+
+## The game
+
+- **Pitch:** a 40 × 20 m walled cage (`constants.ts`). 1.2 m kickboards all round with
+  netting above to 5 m. The ball rebounds off the boards and stays in play, so there
+  are no throw-ins or corners. A ball that clears the netting is out: a goal clearance if
+  it went over an end wall, otherwise a kick-in from the boards where it went out.
+- **Goals:** 3 × 2 m (futsal size). Goal area is a 6 m quarter circle round each post.
+  Only the keeper may handle, and only inside their own goal area.
+- **Teams:** keeper plus four outfield players in a diamond (defender, left, right,
+  pivot). Invented teams only (`team/teams.ts`).
+- **Rules:** no offside. Kick-off at the start of each half and after each goal. Fouls
+  and free kicks are a later milestone; until then tackles that miss the ball just fail.
+- **Match length:** two halves of a few minutes of game time each (tunable), ends swap
+  at half time. A draw in a cup match goes to penalties (port the shootout).
+
+### Controls (keyboard; gamepad later via the Gamepad API)
+
+| Key | In possession | Defending |
+| --- | --- | --- |
+| WASD / arrows | move / dribble | move |
+| Shift | sprint (uses stamina) | sprint |
+| J | ground pass (in the direction you face, to the best receiver) | switch player |
+| K | shoot (hold for power) | standing tackle |
+| L | lofted pass / chip (hold for power) | call a teammate to press |
+
+The controlled player has a marker under them. Auto-switch to the player best placed to
+reach the ball when possession changes or a pass is played to a teammate.
+
+## Architecture
+
+The most important rule: **the simulation does not depend on the presentation.**
+
+- **Simulation** (`src/sim/`, plus `physics.ts`, `ball/`, `team/`, `ai/`): Rapier world,
+  player bodies and movement, ball possession, match rules and clock, and all AI. Pure
+  TypeScript with no `three`, DOM, `window` or audio imports. It advances only in fixed
+  steps (`PHYSICS_STEP`) and takes all randomness from a seeded PRNG passed in. This is
+  what lets tests play whole AI-vs-AI matches headless and fast, lets replays re-run,
+  and keeps online play possible later.
+- **Presentation** (`scene.ts`, `camera.ts`, `characters/`, `ui/`, `audio/`): reads the
+  simulation state after each step and draws it. Never writes to the simulation.
+- **Input** turns keys or a gamepad into the same `Command`s the AI produces
+  (move direction, sprint, pass, shoot with power, tackle, switch). A player doesn't know
+  whether a human or the AI is driving it.
+
+### Players
+
+- Each player is a kinematic capsule (`createPlayerBody`) moved by a locomotion model,
+  not by forces: current velocity steers towards the desired velocity with limited
+  acceleration, deceleration and turn rate, all slower at sprint speed and when on the
+  ball. Stamina drains while sprinting and recovers slowly. All these are in `TUNING`.
+- Players collide with each other through game code (separation and shoulder contests),
+  not by the physics engine pushing kinematic bodies.
+- Attributes per player (pace, passing, shooting, tackling, keeping) scale the tuning
+  values so teams can differ.
+
+### Ball and possession
+
+- The ball is always a Rapier dynamic body, including while dribbled. Dribbling is a
+  series of small touches: when the ball is within control range and in front of the
+  player, they nudge it ahead with an impulse sized to their speed. Possession is a
+  derived state (who touched it last and is within control range), not a parent/child
+  attachment. This keeps tackles, deflections and loose balls physical.
+- Passes and shots set the ball's velocity and spin from a target, using a launch solver
+  that flies a ghost ball with the same aero so the prediction is exact (port
+  `shooting/trajectory.ts`). First-touch quality depends on ball speed and the
+  receiver's attribute.
+- Interception: for any ball in flight, predict its path (same ghost-ball solver, cached
+  per kick) and compute for each player the earliest time they can reach a point on it.
+  Pass safety, who chases a loose ball, and receiving all use this.
+
+### AI (layered)
+
+1. **Team brain** (a few times a second): phase of play (in possession, out of
+   possession, transition), the formation shifted and compressed towards the ball,
+   and role assignment: who presses the ball, who covers, who marks, who makes a run.
+2. **Support spots:** when in possession, score a grid of candidate positions in the
+   attacking area (safe to receive a pass, open shooting angle, distance from the ball
+   and from opponents) and send supporting players to the best ones.
+3. **Player state machine** per player: e.g. `HoldPosition`, `Support`, `ChaseBall`,
+   `Dribble`, `Receive`, `Press`, `Mark`, `Cover`, plus keeper states (`Guard`,
+   `Intercept`, `Dive`, `Distribute`; port the keeper from the penalty game).
+4. **Decisions** on the ball use utility scores: shoot (angle, distance, keeper
+   position, pressure), pass to each teammate (safety from the interception calculation,
+   progress towards goal), or dribble (space ahead). Add a reaction delay and decision
+   noise scaled by difficulty so the AI is beatable.
+5. **Steering** turns a target into a desired velocity: arrive, pursue (lead the target),
+   separation from nearby players, and staying inside the boards.
+
+The classic reference for this structure is Mat Buckland's "Simple Soccer" in
+*Programming Game AI by Example*. Follow its ideas, not its code.
+
+## Layout
+
+- `src/constants.ts` — fixed dimensions (pitch, cage, goals, ball, players). Never magic numbers.
+- `src/config.ts` — `TUNING`: every gameplay knob.
+- `src/math.ts` — `Vec2` / `Vec3`, seeded PRNG (`createRng`), Gaussian sampling, smoothing.
+- `src/physics.ts` — Rapier world, ground, boards and netting, both goals, ball, player bodies, collider tags.
+- `src/ball/aero.ts` — drag and Magnus force (ported from the penalty game).
+- `src/team/formation.ts` — formation slots in the team's own frame and their world positions.
+- `src/team/teams.ts` — invented teams and kits.
+- `src/scene.ts` — renderer, lights, pitch, markings, walls, goals, placeholder player meshes.
+- `src/camera.ts` — broadcast camera that follows the ball.
+- `src/main.ts` — scaffold entry point and loop.
+- `tests/` — Vitest.
+
+As the game grows, add `src/sim/` (world, match, clock, possession), `src/ai/`,
+`src/input/`, `src/characters/`, `src/ui/`, `src/audio/`, `src/replay/` and a `Game`
+class that wires them, as in the penalty game.
+
+## Conventions
+
+- Units are SI: metres, kilograms, seconds. +Y is up. The long axis is X, the centre
+  spot is the origin, goal lines are at x = ±20. The broadcast camera is on the +Z side.
+- A team's own frame: `forward` from its own goal (-1) to the opponents' (+1), `across`
+  from its left touchline (-1) to its right (+1). Convert with `attackDir` (+1 = attacking
+  +X). The home team attacks +X in the first half; ends swap at half time.
+- Physics runs on a fixed timestep; rendering is variable-rate and interpolates.
+  Everything that affects the outcome runs inside the fixed step.
+- Physics is the source of truth for the ball. Player bodies are moved by the locomotion
+  model; meshes copy transforms from the simulation, never the other way round.
+- Simulation code takes randomness from a seeded PRNG passed in, never `Math.random`.
+- Gameplay knobs go in `TUNING`. Match flow, possession and player behaviour use explicit
+  state machines, not scattered flags.
+- Strict TypeScript. No `any` unless there is a comment explaining why.
+- No real club names, crests, kits, player names or league branding.
+
+## Verifying changes
+
+- Run `npm run build` and `npm test` after every change; both must pass.
+- Tests run the simulation headless. Besides unit tests (interception maths, locomotion
+  limits, rules), keep **soak tests** that play several seeded AI-vs-AI matches at full
+  speed and assert: no NaNs, the ball never leaves the cage without a restart, no player
+  stuck in one state for long, possession changes hands, and over many matches both
+  teams score. These catch AI bugs that no single screenshot will.
+- For visual or gameplay changes, run the dev server and look at it in a browser
+  (screenshot if possible) before calling something done. Check the console for errors.
+- Debug flags (add as you go): `?aivsai` (both teams AI, to watch), `?debug` (overlay of
+  player states, support-spot scores, pass lanes and interception points),
+  `?timescale=0.25`, `?seed=123`, `?stats` (fps, draw calls, triangles).
+- Game feel and AI quality can't be judged by reading code. Ask me to playtest, with
+  specific questions (e.g. "do teammates offer a pass when you're pressed?").
+- Performance budget: 60 fps on a laptop with ten animated characters. AI that runs
+  every step must be cheap; spread expensive team-level work over steps.
+
+## Porting from the penalty game
+
+`../penalty-shootout` is finished and tested. Reuse it rather than rewriting, but adapt
+code to this game's axes (goal lines on X, not Z) and keep the sim/presentation split.
+
+| When | What | From `../penalty-shootout/` |
+| --- | --- | --- |
+| Done | Drag and Magnus force | `src/shooting/aero.ts` |
+| M1 | Launch solver with ghost ball (passes, shots) | `src/shooting/trajectory.ts` |
+| M1 | Shot power curve, overpower drift, scatter | `src/shooting/power.ts`, `spin.ts` |
+| M1 | Goal / woodwork outcome from contact events | `src/shooting/outcome.ts` |
+| M3 | Keeper body, dive decision, reach limit | `src/keeper/` |
+| M5 | Humanoid rig, Quaternius Mannequin driver, model build script | `src/characters/rig.ts`, `skinned.ts`, `scripts/prepare-models.mjs`, `public/models/` |
+| M6 | Net ripple, ball trail | `src/net.ts`, `src/trail.ts` |
+| M6 | Synthesised crowd and sound effects | `src/audio/sound.ts` |
+| M6 | Recorder and replays, camera director | `src/replay/`, `src/camera/director.ts` |
+| M6 | Menus, stats, sessions, penalties for drawn cup ties | `src/ui/`, `src/match/` |
+| M7 | Online play (PeerJS, host-authoritative) | `src/online/` |
+
+When porting an asset, copy its row in `ASSETS.md` too.
+
+## Roadmap
+
+Work one milestone at a time and keep the game playable at the end of each. Before
+starting a milestone, write a short plan (files, data structures, tests) and check it
+with me.
+
+1. **One player and the ball.** Split out `src/sim/`. Locomotion model with sprint and
+   stamina. Dribbling by touches, ground pass and shot (hold for power) towards the
+   facing direction, using the ported launch solver. Boards in play, goals detected,
+   ball over the netting resets. Interpolated rendering. Camera follows the controlled
+   player and the ball.
+2. **Teams on the pitch.** Ten players; the human controls one and switches (manual
+   and auto). Kick-off, score, match clock, half time with ends swapped, full time.
+   Teammates and opponents return to formation slots (shifted with the ball) and chase
+   loose balls they can reach first. HUD: score, clock, controlled-player marker.
+3. **Team AI.** Team brain, support spots, pressing and covering, marking, pass / shoot /
+   dribble decisions, the interception model, AI keepers (ported and extended to
+   intercept through balls and distribute). `?aivsai` and `?debug` overlays. Soak tests.
+   Difficulty levels.
+4. **Contests.** Standing tackles with success based on angle and timing, shoulder
+   challenges, loose balls from tackles, first-touch quality, fouls and free kicks,
+   penalties from fouls in the goal area.
+5. **Characters.** Port the rig and the Mannequin. Locomotion blending by speed
+   (idle / jog / run / sprint, turning), procedural kick, pass, tackle and receive
+   poses timed to the simulation's touch events, keeper dives. Team kits.
+6. **Presentation and polish.** Camera director (broadcast, closer action cam, goal
+   cuts), goal replays, crowd and sound, menus and team select, stats, a short league or
+   cup mode, gamepad and touch controls.
+7. **Online (optional).** Port the penalty game's host-authoritative online play: two
+   humans, one team each. The guest sends `Command`s, the host runs the simulation and
+   streams snapshots.
