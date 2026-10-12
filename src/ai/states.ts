@@ -88,10 +88,12 @@ export function offBall(sim: Sim, p: Player, state: AiState, plan: TeamPlan): Co
   }
 }
 
-/** Goal-side of `opponent` by `markDistance`, nudged towards the ball to cut off a pass to them. */
+/** Goal-side of where `opponent` is heading, by `markDistance`, nudged towards the ball to cut off a pass to them. */
 export function markSpot(sim: Sim, p: Player, opponent: Player): Vec2 {
   const A = TUNING.ai;
-  const side = goalSide(sim, opponent.pos, p.team, A.markDistance);
+  // Mark where he's going, not where he is, so a run doesn't leave the marker behind.
+  const ahead = { x: opponent.pos.x + opponent.vel.x * A.markLead, z: opponent.pos.z + opponent.vel.z * A.markLead };
+  const side = goalSide(sim, ahead, p.team, A.markDistance);
   const b = ballPos(sim);
   const dx = b.x - opponent.pos.x;
   const dz = b.z - opponent.pos.z;

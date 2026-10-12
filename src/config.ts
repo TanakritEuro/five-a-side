@@ -231,6 +231,8 @@ export const TUNING = {
     /** ...markers stay this far (m) goal-side of their man, up to this much (m) towards the ball... */
     markDistance: 1.2,
     markBallSide: 0.6,
+    /** Markers aim this many seconds ahead of their man. */
+    markLead: 0.4,
     /** ...and leave anyone further up the other end than this (fraction of the half-length) to the formation. */
     markZone: 0.3,
     /** Seconds after a turnover that everyone hurries (sprints) to their new job. */
