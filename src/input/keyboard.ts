@@ -13,15 +13,25 @@ const GAME_KEYS = new Set([...UP, ...DOWN, ...LEFT, ...RIGHT, 'ShiftLeft', 'Shif
  */
 export class Keyboard {
   private readonly down = new Set<string>();
+  /**
+   * Keys pressed since the last `clearTaps`, even if already let go: a tap shorter than a
+   * frame (or one that lands on a frame with no simulation step) still registers.
+   */
+  private readonly tapped = new Set<string>();
 
-  constructor(target: Window = window) {
-    target.addEventListener('keydown', (e) => {
+  constructor(target: EventTarget = window) {
+    target.addEventListener('keydown', (event) => {
+      const e = event as KeyboardEvent;
       if (GAME_KEYS.has(e.code)) e.preventDefault();
       this.down.add(e.code);
+      this.tapped.add(e.code);
     });
-    target.addEventListener('keyup', (e) => this.down.delete(e.code));
+    target.addEventListener('keyup', (e) => this.down.delete((e as KeyboardEvent).code));
     // Don't leave keys stuck down when the window loses focus.
-    target.addEventListener('blur', () => this.down.clear());
+    target.addEventListener('blur', () => {
+      this.down.clear();
+      this.tapped.clear();
+    });
   }
 
   command(): Command {
@@ -40,8 +50,13 @@ export class Keyboard {
     };
   }
 
+  /** Forget taps that have been seen by a simulation step. Call after stepping. */
+  clearTaps(): void {
+    this.tapped.clear();
+  }
+
   private any(codes: readonly string[]): boolean {
-    return codes.some((c) => this.down.has(c));
+    return codes.some((c) => this.down.has(c) || this.tapped.has(c));
   }
 
   private axis(codes: readonly string[]): number {

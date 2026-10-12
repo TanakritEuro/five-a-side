@@ -98,6 +98,7 @@ export class Game {
 
     const raw = this.keyboard.command();
     let shotPower: number | null = null;
+    let stepped = false;
     while (this.accumulator >= PHYSICS_STEP) {
       const commands: Command[] = [];
       if (this.control) commands[this.control.controlled] = this.control.command(this.sim, raw);
@@ -108,7 +109,10 @@ export class Game {
         this.onEvent(e);
       }
       this.accumulator -= PHYSICS_STEP;
+      stepped = true;
     }
+    // Taps that a step has now seen can be forgotten; on a frame with no step, keep them.
+    if (stepped) this.keyboard.clearTaps();
 
     const { sim, view } = this;
     const controlled = this.controlled;
