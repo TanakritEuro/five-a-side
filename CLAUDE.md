@@ -24,13 +24,19 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestone 1 done (plan and notes in `docs/milestone-1.md`). One controllable player (the
-home pivot) and the ball in the cage, with no opponents yet. The player runs, sprints on
-stamina, dribbles by touches, passes along the ground (J) and shoots, holding K for power.
-Goals are scored and counted. A ball over the netting gives a kick-in or goal clearance,
-and a goal is followed by a kick-off. The headless `Sim` (`src/sim/`) runs everything;
-`Game` wires the keyboard, the interpolated render, the HUD and the camera to it. The
-nine other players come back in Milestone 2. Start there.
+Milestones 1 and 2 done (plans and notes in `docs/milestone-1.md`, `docs/milestone-2.md`).
+A full five-a-side match: ten players, the human on the home team (`?aivsai` to watch
+two AI teams). There is a kick-off, a clock that stops when the ball is dead, two
+3-minute halves with the ends swapped, and full time. Kick-ins and goal clearances
+have a taker, and opponents keep back until the kick. J passes to the best teammate
+in a cone and leads a runner. Away from the ball, J switches to the teammate best
+placed to reach it, and control switches automatically on passes and turnovers.
+
+The AI is a stop-gap until Milestone 3 (`src/ai/ai.ts`). A team brain shifts the
+formation with the ball and sends one chaser per team after a loose ball, plus one
+blocker goal-side of the opposing carrier. On the ball, players run at a shooting spot
+and shoot, or pass when blocked or impatient. Keepers have no hands yet, so there are
+lots of goals. Nobody tackles until Milestone 4. Start on Milestone 3.
 
 Things that aren't obvious from the code:
 - Rapier clamps angular velocity to a quarter turn per step (47 rad/s at 60 Hz). The ball
@@ -38,9 +44,20 @@ Things that aren't obvious from the code:
   bounce are modelled in `ball/forces.ts`, applied identically in the game and in the
   ghost-ball worlds. Keep it that way, or fast passes skid down to ~5 m/s.
 - Each `Sim` owns its `Ghost` worlds, because Rapier carries contact state between
-  steps and sharing ghosts would couple simulations and break determinism.
-- Dribbling has two assists (`dribbleMove`): letting go of the controls with the ball
-  means "stop it", and turning away from a ball that's out of reach goes to it first.
+  steps and sharing ghosts would couple simulations and break determinism. The AI has
+  its own RNG for the same reason.
+- Dribbling has assists (`dribbleMove`, `playBall`):
+  - letting go of the controls with the ball means "stop it";
+  - a dribbler gets behind the ball before turning with it;
+  - a ball pinned against the boards is dragged back out;
+  - no touches while lining up a kick.
+  Possession lapses if the ball is stuck beside or behind its owner. Without these, the
+  soak tests find dribblers wedged in corners for minutes.
+- `Sim.step(commands)`: players without a command are AI-driven when `SimOptions.ai`
+  is set, and stand still otherwise (most unit tests). `kickoff: true` starts with a
+  kick-off rather than open play.
+- The Vite dev server sometimes keeps a stale module after big refactors (errors about
+  missing exports that exist). Restart it.
 
 ## The game
 
@@ -147,7 +164,11 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/sim/command.ts`, `events.ts` — what drives players, and what the sim reports.
 - `src/sim/player.ts`, `locomotion.ts` — player state and attributes; the movement model.
 - `src/sim/possession.ts`, `dribble.ts`, `kick.ts` — who has the ball; touches, traps and first touches; passes and shots.
-- `src/sim/rules.ts` — match-phase state machine: goals, ball out, restarts.
+- `src/sim/match.ts` — `Match`: the match-phase state machine, clock, halves and score.
+- `src/sim/rules.ts`, `restarts.ts` — goals and ball out; restart takers and where everyone stands.
+- `src/sim/control.ts` — `HumanControl`: which player the keyboard drives, switching, context buttons.
+- `src/sim/separation.ts` — players pushed apart so capsules never overlap.
+- `src/ai/` — `Ai` (team brain and per-player state machines), interception estimates, steering.
 - `src/team/formation.ts` — formation slots in the team's own frame and their world positions.
 - `src/team/teams.ts`, `lineup.ts` — invented teams and kits; who's on the pitch.
 - `src/game.ts` — `Game`: keyboard → `Sim` → interpolated render, HUD and camera.
@@ -159,8 +180,8 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/main.ts` — entry point; reads the URL flags.
 - `tests/` — Vitest. `helpers.ts` has a sim factory, command helpers and a random driver.
 
-As the game grows, add `src/ai/`, `src/characters/`, `src/audio/`, `src/replay/`, and
-grow `src/sim/` (match clock, halves), as in the penalty game.
+As the game grows, add `src/characters/`, `src/audio/`, `src/replay/` and the menus, as in
+the penalty game.
 
 ## Conventions
 

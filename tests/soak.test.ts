@@ -3,6 +3,9 @@ import { TUNING } from '../src/config';
 import { HALF_LENGTH, HALF_WIDTH, PHYSICS_STEP, PLAYER_RADIUS } from '../src/constants';
 import { outOfCage } from '../src/sim/rules';
 import type { SimEvent } from '../src/sim/events';
+import type { AiState } from '../src/ai/ai';
+import { Sim } from '../src/sim/sim';
+import { fullLineup } from '../src/team/lineup';
 import { createSim, randomDriver, STEPS_PER_SECOND } from './helpers';
 
 const SECONDS = 90;
@@ -49,5 +52,47 @@ describe('soak: a frantic player for 90 s', () => {
 
   it('scores goals across the runs (and restarts after them)', () => {
     expect(goals).toBeGreaterThan(3);
+  });
+});
+
+/** Longest a player may stay in each AI state before it counts as stuck (s). */
+const STUCK: Partial<Record<AiState['kind'], number>> = { chase: 15, dribble: 25, block: 30, takeRestart: 5 };
+const goalsFor = [0, 0];
+
+describe('soak: whole AI-vs-AI matches', () => {
+  it.each([1, 2, 3, 4])('seed %i: plays to full time without getting stuck', async (seed) => {
+    const sim = await Sim.create({ seed, players: fullLineup(), ai: true, kickoff: true });
+    const ai = sim.ai!;
+    let lastOwnerTeam: 0 | 1 | null = null;
+    let turnovers = 0;
+    // Two halves of play, plus generous time for stoppages.
+    const limit = (2 * TUNING.match.halfLength + 240) * STEPS_PER_SECOND;
+    for (let i = 0; i < limit && !sim.match.over; i++) {
+      sim.step([]);
+      const b = sim.ball.translation();
+      for (const n of [b.x, b.y, b.z]) expect(Number.isFinite(n)).toBe(true);
+      for (const p of sim.players) expect(Number.isFinite(p.pos.x + p.pos.z + p.facing)).toBe(true);
+      if (outOfCage(b)) expect(sim.match.phase.kind).toBe('out');
+
+      for (const p of sim.players) {
+        const max = STUCK[ai.states[p.id].kind];
+        if (max !== undefined) expect((sim.tick - ai.since[p.id]) * PHYSICS_STEP, `${ai.states[p.id].kind} for player ${p.id}`).toBeLessThan(max);
+      }
+      const owner = sim.possession.owner;
+      if (owner !== null) {
+        const team = sim.players[owner].team;
+        if (lastOwnerTeam !== null && team !== lastOwnerTeam) turnovers++;
+        lastOwnerTeam = team;
+      }
+    }
+    expect(sim.match.over).toBe(true);
+    expect(turnovers).toBeGreaterThan(10);
+    goalsFor[0] += sim.match.score[0];
+    goalsFor[1] += sim.match.score[1];
+  });
+
+  it('sees both teams score across the matches', () => {
+    expect(goalsFor[0]).toBeGreaterThan(0);
+    expect(goalsFor[1]).toBeGreaterThan(0);
   });
 });

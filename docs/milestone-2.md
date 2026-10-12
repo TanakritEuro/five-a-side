@@ -1,5 +1,35 @@
 # Milestone 2 plan: teams on the pitch
 
+## Status: done
+
+Decided with you before starting: 3-minute halves, a clock that stops when the ball is
+dead, AI that dribbles, shoots and makes simple passes, and you take your team's set
+pieces with no time limit.
+
+Where the build differs from the plan below:
+
+- **One blocker.** With no pressing at all, an AI dribbler walked to goal unopposed. So
+  the nearest defender stands goal-side of the ball carrier (`block` state). That's
+  jockeying, not tackling; pressing is M3.
+- **J's receiver selection and leading pass moved into the AI commit.** The AI passer
+  turns to its receiver and presses J, so it needed them first.
+- **`Match` replaced `Rules`**, and `sim/restarts.ts` holds the taker and positioning
+  rules. M1's restart "freeze" became a `restart` phase that waits for the taker's kick.
+- **Dribbling changes the soak test forced:**
+  - a dribbler gets behind the ball before turning with it, replacing M1's
+    "go to the ball first";
+  - a ball pinned against the boards is dragged back out;
+  - no touches while lining up a kick, and a longer buffer for shots;
+  - possession lapses if the ball is stuck beside or behind its owner for 1.5 s.
+
+  Before these, dribblers sat wedged in corners for minutes.
+- **The AI on the ball** runs at a shooting spot 7 m out before turning to shoot, so it
+  doesn't take the ball down the goal line. After 6 s on the ball it gets impatient:
+  it passes backwards or shoots from further out. A keeper with nobody to pass to clears
+  it upfield.
+- **The frame `dt` is clamped at zero.** A timestamp earlier than the last frame's
+  sent the camera's smoothing to infinity.
+
 Goal: a full five-a-side match. There are ten players, and you control one at a time,
 switching manually and automatically. A match has a kick-off, a clock, two halves with
 the ends swapped at half time, and full time. Everyone else is a basic AI: they hold a
