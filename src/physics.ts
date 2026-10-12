@@ -32,8 +32,10 @@ export interface Physics {
   events: RAPIER.EventQueue;
   /** Collider handle → tag, for every collider the ball can hit. */
   tags: Map<number, ColliderTag>;
-  /** Collider handle → player id, for the player capsules. */
+  /** Collider handle → player id, for every player collider (keepers have several). */
   playerColliders: Map<number, number>;
+  /** Handles of keepers' colliders (torso and arms), which can catch the ball. */
+  keeperColliders: Set<number>;
 }
 
 let rapierReady: Promise<void> | null = null;
@@ -58,7 +60,7 @@ export async function createPhysics(): Promise<Physics> {
   for (const end of [1, -1] as const) addGoal(add, end);
 
   const ball = createBall(world);
-  return { world, ball, events: new RAPIER.EventQueue(true), tags, playerColliders: new Map() };
+  return { world, ball, events: new RAPIER.EventQueue(true), tags, playerColliders: new Map(), keeperColliders: new Set() };
 }
 
 /**
@@ -190,4 +192,9 @@ export function createPlayerBody(physics: Physics, id: number, x: number, z: num
   physics.tags.set(collider.handle, 'player');
   physics.playerColliders.set(collider.handle, id);
   return body;
+}
+
+/** A keeper's body: a kinematic body with its origin at the feet. `KeeperBody` adds the colliders. */
+export function createKeeperRigidBody(physics: Physics, x: number, z: number): RAPIER.RigidBody {
+  return physics.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, 0, z));
 }

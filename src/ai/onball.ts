@@ -3,13 +3,14 @@ import { GOAL_WIDTH, HALF_LENGTH, PHYSICS_STEP } from '../constants';
 import { clamp, type Rng } from '../math';
 import { IDLE, type Command } from '../sim/command';
 import type { Player } from '../sim/player';
+import { chargePower, shotAim } from '../sim/kick';
 import { canPlayBall } from '../sim/possession';
 import type { Sim } from '../sim/sim';
 import { DEG, distanceToSegment, nearestTeammate, opponentAhead, sidestep, steer } from './geometry';
 import { decide } from './decide';
 import { facing } from './intercept';
 import type { AiState, DribblePlan } from './states';
-import { seek, STAND } from './steering';
+import { insidePitch, seek, STAND } from './steering';
 
 /** What on-ball decisions need besides the sim: the AI's dice and the team's level. */
 export interface OnBallContext {
@@ -39,7 +40,7 @@ export function dribble(sim: Sim, p: Player, state: Extract<AiState, { kind: 'dr
     const to = bestPassTarget(sim, p, onBall > 2 * A.keeperHold);
     if (to) state.plan = { kind: 'pass', to: to.id, stepsLeft: 60 };
     else if (onBall > A.keeperClear) {
-      state.plan = { kind: 'shoot', corner: plan.corner, hold: Math.round((0.7 * TUNING.shot.chargeTime) / PHYSICS_STEP) };
+      state.plan = { kind: 'shoot', corner: plan.corner, hold: Math.round((0.7 * TUNING.shot.chargeTime) / PHYSICS_STEP), giveUp: sim.tick + Math.round(A.shotTimeout / PHYSICS_STEP) };
     }
     return steer(STAND);
   }
@@ -62,7 +63,7 @@ export function dribble(sim: Sim, p: Player, state: Extract<AiState, { kind: 'dr
         if (choice.kind === 'shoot') {
           const toGoal = Math.hypot(choice.target.x - p.pos.x, choice.target.z - p.pos.z);
           const power = clamp(A.shotPower[0] + ((A.shotPower[1] - A.shotPower[0]) * toGoal) / A.shootRange, 0, 1);
-          state.plan = { kind: 'shoot', corner: choice.corner ?? plan.corner, hold: Math.round((power * TUNING.shot.chargeTime) / PHYSICS_STEP) };
+          state.plan = { kind: 'shoot', corner: choice.corner ?? plan.corner, hold: Math.round((power * TUNING.shot.chargeTime) / PHYSICS_STEP), giveUp: sim.tick + Math.round(A.shotTimeout / PHYSICS_STEP) };
           return dribble(sim, p, state, onBall, ctx);
         }
         if (choice.kind === 'pass' && choice.receiver !== undefined) {
@@ -79,17 +80,32 @@ export function dribble(sim: Sim, p: Player, state: Extract<AiState, { kind: 'dr
       return steer(seek(p, target, space && !atSpot && toSpot > 8));
     }
     case 'shoot': {
-      // Hold K until the charge is up to power and the ball is at their feet, then let go
-      // (once: the kick is queued). Don't wait so long that the shot is overpowered.
       const ball = sim.ball.translation();
-      const ready = canPlayBall(p, ball);
-      const charged = p.charge !== null && p.charge.steps >= plan.hold;
-      const near = Math.hypot(ball.x - p.pos.x, ball.z - p.pos.z) < 1.6;
-      const hold = p.charge ? !(charged && (ready || p.charge.steps > plan.hold + 20)) : p.pendingKick === null && near;
-      // Run at the ball to strike it; it is rolling goalwards, so facing it aims the shot.
+      const corner = { x: goal.x, z: plan.corner * (GOAL_WIDTH / 2 - TUNING.shot.postInset) };
+      const near = Math.hypot(ball.x - p.pos.x, ball.z - p.pos.z);
+      // The ball has got away from them, or they can't line it up in time (it's pinned
+      // against the boards, say): forget the shot and carry on.
+      if (near > TUNING.dribble.possessionRange || sim.tick > plan.giveUp) {
+        state.plan = runPlan(ctx.rng);
+        // Cancel the charge (J while holding K) rather than let fly facing the wrong way.
+        return p.charge ? { ...steer(STAND), shoot: true, pass: true } : steer(STAND);
+      }
+      // Line up behind the ball on its line to the corner, then run through it towards the
+      // corner: they shoot the way they face, so they must be facing the goal as they strike.
       const v = sim.ball.linvel();
-      const at = { x: ball.x + v.x * 0.2, z: ball.z + v.z * 0.2 };
-      return { ...steer(seek(p, at, false)), shoot: hold };
+      const ahead = { x: ball.x + v.x * 0.2, z: ball.z + v.z * 0.2 };
+      const ax = corner.x - ahead.x;
+      const az = corner.z - ahead.z;
+      const al = Math.hypot(ax, az) || 1;
+      const behind = insidePitch({ x: ahead.x - (ax / al) * 0.5, z: ahead.z - (az / al) * 0.5 }, 0.35);
+      const lined = Math.hypot(behind.x - p.pos.x, behind.z - p.pos.z) < 0.5;
+      // Hold K until the charge is up to power, the ball is at their feet and the way they
+      // face puts the shot on goal, then let go (once: the kick is queued). Holding on
+      // longer only costs accuracy (overpower); letting fly facing elsewhere wastes it.
+      const ready = canPlayBall(p, ball) && shotAim(ball, p.facing, chargePower(p), dir).atGoal;
+      const charged = p.charge !== null && p.charge.steps >= plan.hold;
+      const hold = p.charge ? !(charged && ready) : p.pendingKick === null && near < 1.6;
+      return { ...steer(seek(p, lined ? corner : behind, false)), shoot: hold };
     }
     case 'pass': {
       const to = sim.players[plan.to];

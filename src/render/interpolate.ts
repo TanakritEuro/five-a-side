@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { lerp, lerpAngle } from '../math';
 import type { Snapshot } from '../sim/sim';
+import { KeeperMesh } from './keeper';
 
 const target = new THREE.Quaternion();
 
@@ -26,6 +27,11 @@ export function interpolate(
     const p = prev.players[i];
     const c = curr.players[i];
     mesh.position.set(lerp(p.x, c.x, alpha), 0, lerp(p.z, c.z, alpha));
+    if (mesh instanceof KeeperMesh) {
+      // Keepers are posed (their dive), not turned to face their heading.
+      mesh.setPose(lerp(p.y, c.y, alpha), lerp(p.lean, c.lean, alpha), lerp(p.arms, c.arms, alpha));
+      return;
+    }
     // Meshes face +X; heading θ points along (cos θ, sin θ) in (x, z), a rotation of −θ about +Y.
     mesh.rotation.y = -lerpAngle(p.facing, c.facing, alpha);
   });

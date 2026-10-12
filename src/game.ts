@@ -6,6 +6,7 @@ import { PHYSICS_STEP } from './constants';
 import { DebugOverlay, StatsOverlay } from './debug';
 import { Keyboard } from './input/keyboard';
 import { interpolate } from './render/interpolate';
+import { KeeperMesh } from './render/keeper';
 import { createMarker, createPlayerMesh, createScene, type GameScene } from './scene';
 import type { Command } from './sim/command';
 import type { SimEvent } from './sim/events';
@@ -77,7 +78,7 @@ export class Game {
     this.hud = new Hud(hudRoot, HINT);
     this.playerMeshes = sim.players.map((p) => {
       const team = TEAMS[p.team];
-      const mesh = createPlayerMesh(p.spec.role === 'keeper' ? team.keeperShirt : team.shirt, team.shorts);
+      const mesh = p.keeper ? new KeeperMesh(team.keeperShirt, team.shorts) : createPlayerMesh(team.shirt, team.shorts);
       this.view.scene.add(mesh);
       return mesh;
     });

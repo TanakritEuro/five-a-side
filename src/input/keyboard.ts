@@ -49,6 +49,8 @@ export class Keyboard {
       tackle: this.any(['KeyK']),
       switch: this.any(['KeyJ']),
       press: this.any(['KeyL']),
+      // You never drive a keeper, so you never dive.
+      dive: null,
     };
   }
 

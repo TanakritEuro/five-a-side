@@ -45,3 +45,13 @@ export const PLAYER_HEIGHT = 1.8;
 export const PLAYER_RADIUS = 0.3;
 
 export const PLAYERS_PER_SIDE = 5;
+
+// Keepers (ported from ../penalty-shootout): a narrower torso than an outfield player's
+// capsule, plus two arms, posed in the plane of the goal line (see keeper/pose.ts).
+export const KEEPER_HEIGHT = 1.9; // feet to top of head
+export const KEEPER_RADIUS = 0.2; // half the body's width
+export const KEEPER_SHOULDER_HEIGHT = 1.52;
+export const KEEPER_SHOULDER_HALF_WIDTH = 0.17; // body centreline to shoulder joint
+export const KEEPER_ARM_LENGTH = 0.68; // shoulder to fingertips
+export const KEEPER_HAND_RADIUS = 0.09; // gloves
+export const KEEPER_COM_HEIGHT = 1.0; // centre of mass, measured up the body

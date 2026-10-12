@@ -56,7 +56,7 @@ describe('soak: a frantic player for 90 s', () => {
 });
 
 /** Longest a player may stay in each AI state before it counts as stuck (s). */
-const STUCK: Partial<Record<AiState['kind'], number>> = { chase: 15, dribble: 25, press: 30, takeRestart: 5 };
+const STUCK: Partial<Record<AiState['kind'], number>> = { chase: 15, dribble: 25, press: 30, takeRestart: 5, dive: 4, holding: 5 };
 const goalsFor = [0, 0];
 
 describe('soak: whole AI-vs-AI matches', () => {

@@ -6,6 +6,7 @@ import { IDLE, type Command } from '../sim/command';
 import type { Player } from '../sim/player';
 import type { Sim } from '../sim/sim';
 import { TeamBrain, type TeamPlan } from './brain';
+import { diveCommand, diveTick, holdingCommand, incomingShot, planDive } from './keeper';
 import { dribble, runPlan, takeRestart } from './onball';
 import { offBall, type AiState } from './states';
 
@@ -28,6 +29,8 @@ export class Ai {
   readonly brains = [new TeamBrain(0), new TeamBrain(1)] as const;
   private readonly rng: Rng;
   private track: { path: BallPath; tick: number } | null = null;
+  /** Per keeper: the ball path (by the tick it was predicted) they last dived for. */
+  private readonly divedFor: number[] = [];
   private stepsToBrain = 0;
 
   constructor(
@@ -57,6 +60,8 @@ export class Ai {
       return dribble(sim, p, state, (sim.tick - this.since[p.id]) * PHYSICS_STEP, { rng: this.rng, level: this.levels[p.team] });
     }
     if (state.kind === 'takeRestart') return takeRestart(sim, p);
+    if (state.kind === 'dive') return diveCommand(sim, state);
+    if (state.kind === 'holding') return holdingCommand(sim, p);
     return offBall(sim, p, state, this.planOf(p.team));
   }
 
@@ -74,6 +79,10 @@ export class Ai {
     const owner = sim.possession.owner;
     const plan = this.planOf(p.team);
     if (p.id === sim.match.taker) return { kind: 'takeRestart' };
+    if (p.keeper) {
+      const keeping = this.keeperState(sim, p);
+      if (keeping) return keeping;
+    }
     if (p.id === owner) {
       const current = this.states[p.id];
       return current?.kind === 'dribble' ? current : { kind: 'dribble', plan: runPlan(this.rng) };
@@ -92,20 +101,45 @@ export class Ai {
   }
 
   /**
+   * A keeper's own states: holding the ball, or diving for a shot (planned once per
+   * predicted path, carried through until they're back on their feet). Null if neither:
+   * then they guard, chase or play like anyone else.
+   */
+  private keeperState(sim: Sim, p: Player): AiState | null {
+    if (sim.handling.holder === p.id) return { kind: 'holding' };
+    const current = this.states[p.id];
+    if (current?.kind === 'dive' && (!current.done || p.keeper?.busy)) return current;
+    const track = this.track;
+    if (!track || !sim.match.inPlay || sim.possession.owner !== null || p.keeper?.busy) return null;
+    // Only trust the prediction while the ball is still on it (a new kick waits for the next one).
+    if (!this.onTrack(sim, track)) return null;
+    if (this.divedFor[p.id] === track.tick) return null;
+    const shot = incomingShot(sim, p, track.path, (sim.tick - track.tick) * PHYSICS_STEP);
+    if (!shot) return null;
+    this.divedFor[p.id] = track.tick;
+    const dive = planDive(shot, sim.keeperLevels[p.team], this.rng);
+    return { kind: 'dive', across: dive.across, height: dive.height, at: diveTick(sim, dive), done: false };
+  }
+
+  /**
    * The loose ball's predicted path, re-predicted when the ball strays from the last
    * prediction (a bounce off a wall or a player, a new kick) or the prediction runs out.
    */
   private ballPath(sim: Sim): BallPath {
     const b = sim.ball.translation();
     const t = this.track;
-    if (t) {
-      const k = Math.round(((sim.tick - t.tick) * PHYSICS_STEP) / t.path.dt);
-      const expected = t.path.points[k];
-      if (expected && Math.hypot(expected.x - b.x, expected.y - b.y, expected.z - b.z) < TUNING.ai.pathTolerance) return t.path;
-    }
+    if (t && this.onTrack(sim, t)) return t.path;
     const path = predictPath(sim.ghost, b, sim.ball.linvel(), sim.ball.angvel());
     this.track = { path, tick: sim.tick };
     return path;
+  }
+
+  /** Is the ball where `track` said it would be by now? */
+  private onTrack(sim: Sim, track: { path: BallPath; tick: number }): boolean {
+    const b = sim.ball.translation();
+    const k = Math.round(((sim.tick - track.tick) * PHYSICS_STEP) / track.path.dt);
+    const expected = track.path.points[k];
+    return !!expected && Math.hypot(expected.x - b.x, expected.y - b.y, expected.z - b.z) < TUNING.ai.pathTolerance;
   }
 
   private set(sim: Sim, p: Player, state: AiState): void {

@@ -18,6 +18,8 @@ export type SimEvent =
   | { type: 'shot'; player: number; outcome: ShotOutcome }
   /** The ball hit a post or the bar. */
   | { type: 'woodwork'; part: Woodwork }
+  /** A keeper got to the ball: caught it, or parried it. */
+  | { type: 'save'; player: number; caught: boolean }
   /** `team` scored in the goal at `end`. */
   | { type: 'goal'; team: 0 | 1; end: GoalEnd; score: [number, number] }
   /** The ball went over the netting. */

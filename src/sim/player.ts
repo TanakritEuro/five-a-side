@@ -1,7 +1,8 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { HALF_LENGTH, HALF_WIDTH, PLAYER_HEIGHT, PLAYER_RADIUS } from '../constants';
 import { clamp, headingVec, type Vec2 } from '../math';
-import { createPlayerBody, type Physics } from '../physics';
+import { KeeperBody } from '../keeper/body';
+import { createKeeperRigidBody, createPlayerBody, type Physics } from '../physics';
 import type { Role, Slot } from '../team/formation';
 import type { MoveState } from './locomotion';
 
@@ -63,18 +64,26 @@ export interface Player extends MoveState {
   pendingKick: PendingKick | null;
   /** Seconds before this player may touch the ball again (after a touch or a kick). */
   touchCooldown: number;
+  /** A keeper's arms and dive; null for outfield players. */
+  readonly keeper: KeeperBody | null;
   /** Kick buttons held last step, for press/release detection. */
   held: Record<KickKind, boolean>;
 }
 
 export function createPlayer(physics: Physics, id: number, spec: PlayerSpec): Player {
   const { x, z } = spec.kickoff;
+  const isKeeper = spec.role === 'keeper';
+  const body = isKeeper ? createKeeperRigidBody(physics, x, z) : createPlayerBody(physics, id, x, z);
+  const keeper = isKeeper ? new KeeperBody(physics, body, id) : null;
+  keeper?.reset(z);
+  keeper?.apply(x, true);
   return {
     id,
     spec,
     team: spec.team,
     attrs: spec.attrs ?? { ...AVERAGE },
-    body: createPlayerBody(physics, id, x, z),
+    body,
+    keeper,
     pos: { x, z },
     vel: { x: 0, z: 0 },
     speed: 0,
@@ -104,9 +113,10 @@ export function integratePlayer(p: Player, dt: number): void {
   p.pos.z = z;
 }
 
-/** Move the player's capsule to where the player is now (after movement and separation). */
+/** Move the player's body to where the player is now (after movement and separation). */
 export function syncBody(p: Player): void {
-  p.body.setNextKinematicTranslation({ x: p.pos.x, y: PLAYER_HEIGHT / 2, z: p.pos.z });
+  if (p.keeper) p.keeper.apply(p.pos.x, false);
+  else p.body.setNextKinematicTranslation({ x: p.pos.x, y: PLAYER_HEIGHT / 2, z: p.pos.z });
 }
 
 /** Teleport a player (kick-off, restarts), standing still. */
@@ -119,5 +129,20 @@ export function placePlayer(p: Player, pos: Vec2, facing: number): void {
   p.facing = facing;
   p.charge = null;
   p.pendingKick = null;
-  p.body.setTranslation({ x: pos.x, y: PLAYER_HEIGHT / 2, z: pos.z }, true);
+  if (p.keeper) {
+    p.keeper.reset(pos.z);
+    p.keeper.apply(pos.x, true);
+  } else {
+    p.body.setTranslation({ x: pos.x, y: PLAYER_HEIGHT / 2, z: pos.z }, true);
+  }
+}
+
+/** Move the player's body straight to where they are (after restart positioning), no sweep. */
+export function teleportBody(p: Player): void {
+  if (p.keeper) {
+    p.keeper.reset(p.pos.z);
+    p.keeper.apply(p.pos.x, true);
+  } else {
+    p.body.setTranslation({ x: p.pos.x, y: PLAYER_HEIGHT / 2, z: p.pos.z }, true);
+  }
 }

@@ -48,15 +48,16 @@ export function separatePlayers(players: readonly Player[]): void {
  * Keep players' bodies just off a slow ball. Two players running at a resting ball
  * otherwise squeeze it between their capsules (and the boards), lifting it out of reach
  * of their feet so nobody can play it. A moving ball still bounces off bodies as usual:
- * that's how blocks and deflections happen.
+ * that's how blocks and deflections happen. A keeper holding the ball (`holder`) is exempt.
  */
-export function keepOffBall(players: readonly Player[], ball: Vec3, ballVel: Vec3): void {
+export function keepOffBall(players: readonly Player[], ball: Vec3, ballVel: Vec3, holder: number | null = null): void {
   const S = TUNING.separation;
   if (ball.y > S.ballClearHeight || Math.hypot(ballVel.x, ballVel.z) > S.ballClearSpeed) return;
   const min = PLAYER_RADIUS + BALL_RADIUS + TUNING.separation.gap;
   const maxX = HALF_LENGTH - PLAYER_RADIUS;
   const maxZ = HALF_WIDTH - PLAYER_RADIUS;
   for (const p of players) {
+    if (p.id === holder) continue; // the keeper holding it
     const dx = p.pos.x - ball.x;
     const dz = p.pos.z - ball.z;
     const d = Math.hypot(dx, dz);

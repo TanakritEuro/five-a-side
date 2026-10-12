@@ -3,21 +3,25 @@ import { Ai } from '../ai/ai';
 import { applyBallForces } from '../ball/forces';
 import { ShotTracker } from '../ball/outcome';
 import { Ghost } from '../ball/trajectory';
-import { TUNING, type LevelName } from '../config';
-import { BALL_RADIUS, PHYSICS_STEP } from '../constants';
+import { TUNING, type KeeperLevel, type LevelName } from '../config';
+import { BALL_RADIUS, HALF_LENGTH, PHYSICS_STEP } from '../constants';
 import { createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
 import { createPhysics, type Physics } from '../physics';
 import { IDLE, type Command } from './command';
 import { dribbleMove, playBall } from './dribble';
 import type { SimEvent } from './events';
+import { Handling } from './handling';
 import { tryKick, updateKickButtons } from './kick';
 import { stepLocomotion } from './locomotion';
 import { Match, type MatchAction } from './match';
-import { createPlayer, integratePlayer, syncBody, type Player, type PlayerSpec } from './player';
+import { createPlayer, integratePlayer, syncBody, teleportBody, type Player, type PlayerSpec } from './player';
 import { Possession } from './possession';
 import { chooseTaker, faceNearestTeammate, holdRestartShape, placeForRestart } from './restarts';
 import type { Restart, RulesContext } from './rules';
 import { keepOffBall, separatePlayers } from './separation';
+
+/** A keeper gathers a loose ball no higher than this (m) with their hands. */
+const GATHER_HEIGHT = 2.2;
 
 export interface SimOptions {
   seed: number;
@@ -34,6 +38,10 @@ export interface PlayerSnapshot {
   x: number;
   z: number;
   facing: number;
+  /** Keepers: the dive pose (height off the ground, lean, arm angle). Zero for outfield players. */
+  y: number;
+  lean: number;
+  arms: number;
 }
 
 /** What the renderer needs from one step, so it can interpolate between two of them. */
@@ -74,6 +82,12 @@ export class Sim {
   private readonly pressHeld = [false, false];
   /** The last pass played to a teammate (for the AI's receiver), until someone controls the ball. */
   lastPass: { player: number; receiver: number; tick: number } | null = null;
+  /** Keepers catching, holding and distributing the ball. */
+  readonly handling = new Handling();
+  /** Each team's keeper level (from its AI level). */
+  readonly keeperLevels: readonly [KeeperLevel, KeeperLevel];
+  /** The ball's velocity at the start of the current step's physics. */
+  private incoming: Vec3 = { x: 0, y: 0, z: 0 };
 
   static async create(options: SimOptions): Promise<Sim> {
     return new Sim(await createPhysics(), options);
@@ -83,6 +97,7 @@ export class Sim {
     this.physics = physics;
     this.rng = createRng(options.seed);
     const [home, away] = options.levels ?? ['normal', 'normal'];
+    this.keeperLevels = [TUNING.keeper.levels[TUNING.levels[home].keeper], TUNING.keeper.levels[TUNING.levels[away].keeper]];
     this.ai = options.ai ? new Ai(options.seed, [TUNING.levels[home], TUNING.levels[away]]) : null;
     this.players = options.players.map((spec, id) => createPlayer(physics, id, spec));
     this.match = new Match(options.kickoff ?? false);
@@ -155,23 +170,49 @@ export class Sim {
 
     for (const p of this.players) {
       const cmd = resolved[p.id];
+      p.touchCooldown = Math.max(0, p.touchCooldown - dt);
+      if (p.keeper) {
+        if (cmd.dive && match.inPlay && this.handling.holder !== p.id) p.keeper.dive(cmd.dive.across, cmd.dive.height, this.keeperLevels[p.team]);
+        if (p.keeper.busy) {
+          // Diving, down or getting up: the dive moves them, not their legs.
+          p.speed = 0;
+          p.vel.x = 0;
+          p.vel.z = 0;
+          p.pos.z = p.keeper.step(dt, p.pos.z);
+          continue;
+        }
+      }
       const onBall = this.possession.owner === p.id;
-      const move = stopped ? cmd.move : dribbleMove(p, cmd.move, this.ball, this.possession);
+      const move = stopped || this.handling.holder === p.id ? cmd.move : dribbleMove(p, cmd.move, this.ball, this.possession);
       stepLocomotion(p, { move, sprint: cmd.sprint, onBall, pace: p.attrs.pace }, dt);
       integratePlayer(p, dt);
-      p.touchCooldown = Math.max(0, p.touchCooldown - dt);
+      p.keeper?.step(dt, p.pos.z);
     }
     separatePlayers(this.players);
-    keepOffBall(this.players, this.ball.translation(), this.ball.linvel());
+    keepOffBall(this.players, this.ball.translation(), this.ball.linvel(), this.handling.holder);
     if (match.phase.kind === 'restart') {
       const b = this.ball.translation();
       holdRestartShape(this.players, match.phase.restart, match.taker, { x: b.x, z: b.z }, (t) => this.attackDir(t));
     }
+    const holder = this.handling.holder === null ? null : this.players[this.handling.holder];
+    if (holder) this.handling.confine(holder, ownGoalX(this, holder.team));
     for (const p of this.players) syncBody(p);
 
     for (const p of this.players) {
       updateKickButtons(p, resolved[p.id]);
-      if (match.inPlay) {
+      if (holder) {
+        // A keeper holding the ball: J (or K) throws or rolls it out; nobody else can play it.
+        if (p === holder && p.pendingKick) {
+          p.pendingKick = null;
+          p.charge = null;
+          this.onPlayed(this.handling.distribute(p, this.players, this.ball, this.possession, this.ghost), events);
+        } else if (p !== holder) {
+          p.pendingKick = null;
+        }
+      } else if (match.inPlay) {
+        if (p.keeper && this.gather(p, events)) continue;
+        // A keeper diving or on the ground can't play it with their feet.
+        if (p.keeper?.busy) continue;
         const event = tryKick(p, this) ?? playBall(p, this.ball, this.possession, resolved[p.id].move, this.rng, dt);
         if (event) this.onPlayed(event, events);
       } else if (p.id === match.taker) {
@@ -187,6 +228,11 @@ export class Sim {
       }
     }
 
+    const stillHeld = this.handling.holder === null ? null : this.players[this.handling.holder];
+    if (stillHeld) this.handling.hold(stillHeld, this.ball, dt);
+    // The ball's velocity coming into this step: a keeper's catch depends on it, not on
+    // how it bounced off them.
+    this.incoming = this.ball.linvel();
     applyBallForces(this.ball);
     world.step(queue);
     queue.drainCollisionEvents((h1, h2, started) => {
@@ -211,6 +257,25 @@ export class Sim {
       this.teleported = false;
     }
     return events;
+  }
+
+  /**
+   * A keeper gathers a loose ball within reach in their own area with their hands (rather
+   * than trapping it with a foot), if it's catchable. True if they did.
+   */
+  private gather(p: Player, events: SimEvent[]): boolean {
+    // Diving or down, they can still get their hands on it.
+    if (this.handling.holder !== null || this.possession.owner !== null || p.touchCooldown > 0) return false;
+    const b = this.ball.translation();
+    if (b.y > GATHER_HEIGHT || Math.hypot(b.x - p.pos.x, b.z - p.pos.z) > TUNING.dribble.reach) return false;
+    const last = this.possession.lastTouch;
+    const lastTeam = last === null ? null : this.players[last].team;
+    if (!this.handling.canCatch(p, b, this.ball.linvel(), ownGoalX(this, p.team), this.keeperLevels[p.team], lastTeam)) return false;
+    this.shot?.tracker.onKeeperTouch();
+    events.push({ type: 'save', player: p.id, caught: true });
+    this.handling.catch(p, this.ball, this.possession);
+    this.onPlayed({ type: 'touch', player: p.id, kind: 'receive' }, events);
+    return true;
   }
 
   /** A player kicked or touched the ball. */
@@ -243,6 +308,26 @@ export class Sim {
     if (id === undefined || id === this.possession.owner || !this.match.inPlay) return;
     // The kicker's own body brushing the ball as it leaves their foot isn't a deflection.
     if (id === this.possession.lastTouch && this.players[id].touchCooldown > 0) return;
+    const p = this.players[id];
+    if (p.keeper && this.handling.holder === null) {
+      // A keeper got a hand (or body) to it: catch it if they can, otherwise it's a parry.
+      this.shot?.tracker.onKeeperTouch();
+      const last = this.possession.lastTouch;
+      const caught = this.handling.canCatch(
+        p,
+        this.ball.translation(),
+        this.incoming,
+        ownGoalX(this, p.team),
+        this.keeperLevels[p.team],
+        last === null ? null : this.players[last].team,
+      );
+      events.push({ type: 'save', player: id, caught });
+      if (caught) {
+        this.handling.catch(p, this.ball, this.possession);
+        this.onPlayed({ type: 'touch', player: id, kind: 'receive' }, events);
+        return;
+      }
+    }
     this.possession.deflect(id);
     events.push({ type: 'touch', player: id, kind: 'deflect' });
   }
@@ -260,6 +345,7 @@ export class Sim {
   private setRestart(restart: Restart, events: SimEvent[]): void {
     this.placeBall(restart.at);
     this.possession.reset();
+    this.handling.drop();
     this.lastPass = null;
     this.shot = null;
     const taker = chooseTaker(this.players, restart);
@@ -270,7 +356,7 @@ export class Sim {
     }
     if (restart.kind === 'kickoff') faceNearestTeammate(this.players, taker);
     holdRestartShape(this.players, restart, taker, restart.at, (t) => this.attackDir(t));
-    for (const p of this.players) p.body.setTranslation({ x: p.pos.x, y: p.body.translation().y, z: p.pos.z }, true);
+    for (const p of this.players) teleportBody(p);
     this.match.setTaker(taker);
     events.push({ type: 'restart', restart, taker });
     this.teleported = true;
@@ -279,7 +365,7 @@ export class Sim {
   private emptySnapshot(): Snapshot {
     return {
       ball: { pos: { x: 0, y: 0, z: 0 }, rot: { x: 0, y: 0, z: 0, w: 1 } },
-      players: this.players.map(() => ({ x: 0, z: 0, facing: 0 })),
+      players: this.players.map(() => ({ x: 0, z: 0, facing: 0, y: 0, lean: 0, arms: 0 })),
     };
   }
 
@@ -288,7 +374,10 @@ export class Sim {
     const r = this.ball.rotation();
     Object.assign(s.ball.pos, { x: p.x, y: p.y, z: p.z });
     Object.assign(s.ball.rot, { x: r.x, y: r.y, z: r.z, w: r.w });
-    this.players.forEach((pl, i) => Object.assign(s.players[i], { x: pl.pos.x, z: pl.pos.z, facing: pl.facing }));
+    this.players.forEach((pl, i) => {
+      const pose = pl.keeper?.pose;
+      Object.assign(s.players[i], { x: pl.pos.x, z: pl.pos.z, facing: pl.facing, y: pose?.y ?? 0, lean: pose?.lean ?? 0, arms: pose?.arms ?? 0 });
+    });
   }
 }
 
@@ -296,4 +385,9 @@ function copySnapshot(from: Snapshot, to: Snapshot): void {
   Object.assign(to.ball.pos, from.ball.pos);
   Object.assign(to.ball.rot, from.ball.rot);
   from.players.forEach((p, i) => Object.assign(to.players[i], p));
+}
+
+/** The x of the goal line `team` defends. */
+function ownGoalX(sim: Sim, team: 0 | 1): number {
+  return -sim.attackDir(team) * HALF_LENGTH;
 }

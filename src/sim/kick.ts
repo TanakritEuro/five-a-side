@@ -14,13 +14,21 @@ const DEG = Math.PI / 180;
 
 /**
  * Turn a player's kick buttons into kicks. The pass is a tap: pressing it queues a pass.
- * The shot is held for power: holding charges it and releasing queues it at that power.
+ * The shot is held for power: holding charges it and releasing queues it at that power;
+ * pressing J while charging cancels it.
  * A queued kick is taken as soon as the ball is in reach (`tryKick`), or dropped after
  * `bufferTime`, so a kick pressed a moment early still happens.
  */
 export function updateKickButtons(p: Player, cmd: Command): void {
   const bufferSteps = Math.round(TUNING.kick.bufferTime / PHYSICS_STEP);
-  if (cmd.pass && !p.held.pass) p.pendingKick = { kind: 'pass', power: 0, stepsLeft: bufferSteps };
+  const passPressed = cmd.pass && !p.held.pass;
+  if (passPressed && p.charge?.kind === 'shoot') {
+    // J while charging a shot cancels it.
+    p.charge = null;
+    p.held = { pass: cmd.pass, shoot: cmd.shoot, lob: cmd.lob };
+    return;
+  }
+  if (passPressed) p.pendingKick = { kind: 'pass', power: 0, stepsLeft: bufferSteps };
 
   if (cmd.shoot) {
     if (p.charge?.kind !== 'shoot') p.charge = { kind: 'shoot', steps: 0 };

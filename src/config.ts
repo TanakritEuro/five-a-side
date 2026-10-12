@@ -16,6 +16,21 @@ export interface AiLevel {
 }
 
 export type KeeperLevelName = 'easy' | 'normal' | 'hard';
+
+export interface KeeperLevel {
+  /** Seconds after the shot before the keeper moves. */
+  reactionTime: number;
+  /** Chance (0–1) the keeper reads the shot instead of guessing (plus `openPlayRead`). */
+  readChance: number;
+  /** How far off (m, standard deviation) a read keeper's target is. */
+  readError: number;
+  /** Seconds for a full dive, launch to full stretch. */
+  diveTime: number;
+  /** How far the keeper's centre of mass can travel in a dive (m): their reach. */
+  maxDive: number;
+  /** Fastest ball (m/s) the keeper catches; faster ones are parried. */
+  catchSpeed: number;
+}
 export type LevelName = 'easy' | 'normal' | 'hard';
 
 const LEVELS: Record<LevelName, AiLevel> = {
@@ -213,6 +228,8 @@ export const TUNING = {
     shootingSpot: 7,
     /** AI shot power rises from `shotPower[0]` up close to `shotPower[1]` from this far out (m). */
     shootRange: 12,
+    /** An AI shooter who hasn't got the shot away after this long (s) gives up on it. */
+    shotTimeout: 1.6,
     /** Power (0–1) range for AI shots. */
     shotPower: [0.62, 0.78],
     /** An opponent this close (m) and ahead of the AI dribbler is in the way: go round them. */
@@ -306,6 +323,36 @@ export const TUNING = {
     /** Players keep their bodies off a ball moving slower than this (m/s) and lower than this (m). */
     ballClearSpeed: 1,
     ballClearHeight: 2,
+  },
+  keeper: {
+    /** Per level (ported from the penalty game, then given open-play extras). */
+    levels: {
+      easy: { reactionTime: 0.2, readChance: 0.3, readError: 0.6, diveTime: 0.62, maxDive: 1.8, catchSpeed: 9 },
+      normal: { reactionTime: 0.1, readChance: 0.45, readError: 0.4, diveTime: 0.5, maxDive: 2.05, catchSpeed: 11 },
+      hard: { reactionTime: 0.06, readChance: 0.6, readError: 0.25, diveTime: 0.45, maxDive: 2.2, catchSpeed: 13 },
+    } as Record<KeeperLevelName, KeeperLevel>,
+    /**
+     * In open play a keeper sees the shot coming more often than at a penalty: added to
+     * every level's read chance.
+     */
+    openPlayRead: 0.35,
+    /** When guessing, chance the keeper stays in the middle instead of picking a side. */
+    guessCentreChance: 0.2,
+    /** Targets within this distance of the keeper (m) are covered standing or jumping. */
+    centreBand: 0.55,
+    /** Highest the keeper can jump off the ground (m). */
+    maxJump: 0.45,
+    /** Seconds to drop to the ground after a dive, then to stay down before getting up. */
+    landTime: 0.35,
+    downTime: 0.5,
+    /** React to a ball whose path crosses the goal mouth (plus this margin, m) within this long (s). */
+    shotHorizon: 1.5,
+    frameMargin: 0.5,
+    /** Hold a caught ball this long (s) before distributing it (futsal allows 4 s). */
+    holdTime: 1,
+    /** Distribute by throwing beyond this distance (m), rolling it out nearer. Throws travel at this horizontal speed (m/s). */
+    throwDistance: 12,
+    throwSpeed: 14,
   },
   outcome: {
     /** Give up waiting and call a shot a miss after this many seconds of flight. */

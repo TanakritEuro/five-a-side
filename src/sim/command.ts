@@ -20,6 +20,8 @@ export interface Command {
   tackle: boolean;
   /** Switch player (J out of possession). */
   switch: boolean;
+  /** Keepers: dive now towards this point on their line (`across` = world Z, `height` up). */
+  dive: { across: number; height: number } | null;
   /** Call a teammate to press the ball (L out of possession). */
   press: boolean;
 }
@@ -33,4 +35,5 @@ export const IDLE: Readonly<Command> = Object.freeze({
   tackle: false,
   switch: false,
   press: false,
+  dive: null,
 });

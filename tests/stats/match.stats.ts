@@ -17,7 +17,8 @@ const LEVELS = (process.env.LEVELS ?? 'normal,normal').split(',') as [LevelName,
 it('prints match statistics', async () => {
   for (const seed of SEEDS) {
     const sim = await Sim.create({ seed, players: fullLineup(), ai: true, kickoff: true, levels: LEVELS });
-    const perTeam = [{ shots: 0, passes: 0, goals: 0 }, { shots: 0, passes: 0, goals: 0 }];
+    const perTeam = [0, 1].map(() => ({ shots: 0, wild: 0, passes: 0, saves: 0, goals: 0 }));
+    const wildBy: Record<string, number> = {};
     const counts: Record<string, number> = {};
     const longest: Record<string, number> = {};
     let lastTeam: 0 | 1 | null = null;
@@ -26,7 +27,12 @@ it('prints match statistics', async () => {
     for (let i = 0; i < 60 * 60 * 10 && !sim.match.over; i++) {
       for (const e of sim.step([])) {
         counts[e.type] = (counts[e.type] ?? 0) + 1;
-        if (e.type === 'kick') perTeam[sim.players[e.player].team][e.kind === 'shoot' ? 'shots' : 'passes']++;
+        if (e.type === 'kick') perTeam[sim.players[e.player].team][e.kind === 'shoot' ? (e.atGoal ? 'shots' : 'wild') : 'passes']++;
+        if (e.type === 'save') perTeam[sim.players[e.player].team].saves++;
+        if (e.type === 'kick' && e.kind === 'shoot' && !e.atGoal) {
+          const role = sim.players[e.player].spec.role;
+          wildBy[role] = (wildBy[role] ?? 0) + 1;
+        }
         if (e.type === 'goal') perTeam[e.team].goals++;
       }
       const o = sim.possession.owner;
@@ -52,6 +58,6 @@ it('prints match statistics', async () => {
       });
     }
     const round = Object.fromEntries(Object.entries(longest).map(([k, v]) => [k, +v.toFixed(1)]));
-    console.log(`seed ${seed} (${LEVELS.join(" v ")}): score ${sim.match.score.join("-")}, ${(sim.tick / 3600).toFixed(1)} min, ${turnovers} turnovers, per team ${JSON.stringify(perTeam)}`, JSON.stringify(counts), "longest", JSON.stringify(round));
+    console.log(`seed ${seed} (${LEVELS.join(" v ")}): score ${sim.match.score.join("-")}, ${(sim.tick / 3600).toFixed(1)} min, ${turnovers} turnovers, per team ${JSON.stringify(perTeam)}, wild shots by role ${JSON.stringify(wildBy)}`, JSON.stringify(counts), "longest", JSON.stringify(round));
   }
 });

@@ -27,6 +27,10 @@ export type AiState =
   | { kind: 'mark'; opponent: number }
   /** A keeper off the ball: stand between the ball and the middle of the goal. */
   | { kind: 'keeper' }
+  /** A keeper facing a shot: wait until tick `at`, then dive towards (across, height); `done` once they have. */
+  | { kind: 'dive'; across: number; height: number; at: number; done: boolean }
+  /** A keeper with the ball in their hands: hold it a moment, then throw or roll it to a teammate. */
+  | { kind: 'holding' }
   /** On the ball (see onball.ts). */
   | { kind: 'dribble'; plan: DribblePlan }
   /** Taking a kick-off, kick-in or goal clearance. */
@@ -35,8 +39,8 @@ export type AiState =
 export type DribblePlan =
   /** Carry it at goal, aiming for one corner (+1 or -1 across the goal); decide again at tick `nextDecision`. */
   | { kind: 'run'; corner: 1 | -1; nextDecision: number }
-  /** Charging a shot: hold K for `hold` steps, then let go. */
-  | { kind: 'shoot'; corner: 1 | -1; hold: number }
+  /** Lining up and charging a shot: hold K for at least `hold` steps; abandon it at tick `giveUp`. */
+  | { kind: 'shoot'; corner: 1 | -1; hold: number; giveUp: number }
   /** Turning to pass to teammate `to`; give up after `stepsLeft`. */
   | { kind: 'pass'; to: number; stepsLeft: number };
 
@@ -82,9 +86,11 @@ export function offBall(sim: Sim, p: Player, state: AiState, plan: TeamPlan): Co
     }
     case 'keeper':
       return steer(arrive(p, keeperSpot(sim, p), 0.2));
+    case 'dive':
+    case 'holding':
     case 'dribble':
     case 'takeRestart':
-      throw new Error(`offBall called for an on-ball state (${state.kind})`);
+      throw new Error(`offBall called for a state with its own command (${state.kind})`);
   }
 }
 
