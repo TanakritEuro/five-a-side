@@ -4,7 +4,8 @@ import { CENTRE_CIRCLE_RADIUS, PHYSICS_STEP } from '../src/constants';
 import type { SimEvent } from '../src/sim/events';
 import { Sim } from '../src/sim/sim';
 import { fullLineup } from '../src/team/lineup';
-import { STEPS_PER_SECOND } from './helpers';
+import type { Command } from '../src/sim/command';
+import { cmd, STEPS_PER_SECOND } from './helpers';
 
 const M = TUNING.match;
 const halfLength = M.halfLength;
@@ -34,7 +35,9 @@ describe('kick-off', () => {
     const taker = sim.match.taker!;
     expect(sim.players[taker]).toMatchObject({ team: 0 });
     for (const p of sim.players) {
-      expect(p.pos.x * sim.attackDir(p.team)).toBeLessThan(0);
+      // All in their own half, except the taker: they face back to a teammate, so they
+      // stand just over the line on the far side of the ball.
+      if (p.id !== taker) expect(p.pos.x * sim.attackDir(p.team)).toBeLessThan(0);
       if (p.team === 1) expect(Math.hypot(p.pos.x, p.pos.z)).toBeGreaterThan(CENTRE_CIRCLE_RADIUS);
     }
   });
@@ -47,6 +50,21 @@ describe('kick-off', () => {
     expect(sim.match.clock.elapsed).toBeLessThan(2 * PHYSICS_STEP);
   });
 });
+
+  it('starts the taker facing a teammate, so a plain J tap passes to them', async () => {
+    const sim = await match();
+    const taker = sim.match.taker!;
+    const events: SimEvent[] = [];
+    for (let i = 0; i < 10; i++) {
+      const commands: Command[] = [];
+      commands[taker] = cmd({ pass: i === 0 });
+      events.push(...sim.step(commands));
+    }
+    const kick = events.find((e): e is Extract<SimEvent, { type: 'kick' }> => e.type === 'kick');
+    expect(kick?.player).toBe(taker);
+    expect(kick?.receiver).not.toBeNull();
+    expect(sim.players[kick!.receiver!].team).toBe(sim.players[taker].team);
+  });
 
 describe('halves', () => {
   it('stops the clock while the ball is dead', async () => {
@@ -71,7 +89,7 @@ describe('halves', () => {
     expect(sim.attackDir(1)).toBe(1);
     expect(sim.match.phase).toMatchObject({ kind: 'restart', restart: { kind: 'kickoff', team: 1 } });
     for (const p of sim.players) {
-      expect(p.pos.x * sim.attackDir(p.team)).toBeLessThan(0);
+      if (p.id !== sim.match.taker) expect(p.pos.x * sim.attackDir(p.team)).toBeLessThan(0);
     }
     // Team 0's keeper is now in the +X goal.
     const keeper = sim.players.find((p) => p.team === 0 && p.spec.role === 'keeper')!;

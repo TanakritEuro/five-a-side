@@ -14,7 +14,7 @@ import { stepLocomotion } from './locomotion';
 import { Match, type MatchAction } from './match';
 import { createPlayer, integratePlayer, syncBody, type Player, type PlayerSpec } from './player';
 import { Possession } from './possession';
-import { chooseTaker, holdRestartShape, placeForRestart } from './restarts';
+import { chooseTaker, faceNearestTeammate, holdRestartShape, placeForRestart } from './restarts';
 import type { Restart, RulesContext } from './rules';
 import { separatePlayers } from './separation';
 
@@ -228,6 +228,7 @@ export class Sim {
       p.pendingKick = null;
       placeForRestart(p, restart, taker, this.match.clock.half, this.attackDir(p.team));
     }
+    if (restart.kind === 'kickoff') faceNearestTeammate(this.players, taker);
     holdRestartShape(this.players, restart, taker, restart.at, (t) => this.attackDir(t));
     for (const p of this.players) p.body.setTranslation({ x: p.pos.x, y: p.body.translation().y, z: p.pos.z }, true);
     this.match.setTaker(taker);

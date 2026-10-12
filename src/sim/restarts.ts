@@ -110,3 +110,25 @@ export function placeForRestart(p: Player, restart: Restart, taker: number | nul
     p.pendingKick = null;
   }
 }
+
+/**
+ * Turn a kick-off taker to face their nearest outfield teammate. Everyone else is
+ * behind the ball at a kick-off, so facing forward, a plain J tap would roll it straight
+ * to the opposition. Call once everyone is on their kick-off spot; `holdRestartShape`
+ * then puts the taker behind the ball on the new line.
+ */
+export function faceNearestTeammate(players: readonly Player[], taker: number | null): void {
+  if (taker === null) return;
+  const p = players[taker];
+  let nearest: Player | null = null;
+  let best = Infinity;
+  for (const q of players) {
+    if (q.team !== p.team || q.id === p.id || q.spec.role === 'keeper') continue;
+    const d = Math.hypot(q.pos.x - p.pos.x, q.pos.z - p.pos.z);
+    if (d < best) {
+      best = d;
+      nearest = q;
+    }
+  }
+  if (nearest) p.facing = Math.atan2(nearest.pos.z - p.pos.z, nearest.pos.x - p.pos.x);
+}
