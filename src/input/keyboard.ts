@@ -34,8 +34,9 @@ export class Keyboard {
       pass: this.any(['KeyJ']),
       shoot: this.any(['KeyK']),
       lob: this.any(['KeyL']),
-      tackle: false,
-      switch: false,
+      // J and K are context buttons (pass or switch, shoot or tackle): HumanControl picks.
+      tackle: this.any(['KeyK']),
+      switch: this.any(['KeyJ']),
     };
   }
 

@@ -10,6 +10,7 @@ import { createMarker, createPlayerMesh, createScene, type GameScene } from './s
 import type { Command } from './sim/command';
 import type { SimEvent } from './sim/events';
 import type { RestartKind } from './sim/rules';
+import { HumanControl } from './sim/control';
 import { Sim } from './sim/sim';
 import { fullLineup } from './team/lineup';
 import { TEAMS } from './team/teams';
@@ -44,8 +45,8 @@ export class Game {
   private readonly marker: THREE.Object3D;
   private readonly debug: DebugOverlay | null;
   private readonly stats: StatsOverlay | null;
-  /** The player the keyboard drives, or null when nobody is (AI vs AI). */
-  private controlled: number | null;
+  /** Who the keyboard drives (and switching), or null when nobody is (AI vs AI). */
+  private readonly control: HumanControl | null;
   private accumulator = 0;
   private last = 0;
 
@@ -61,8 +62,9 @@ export class Game {
     private readonly options: GameOptions,
   ) {
     this.view = createScene(canvas);
-    // The home pivot, until switching arrives.
-    this.controlled = options.aiVsAi ? null : sim.players.findIndex((p) => p.team === 0 && p.spec.role === 'pivot');
+    // You start on the home pivot, who takes the first kick-off.
+    const pivot = sim.players.findIndex((p) => p.team === 0 && p.spec.role === 'pivot');
+    this.control = options.aiVsAi ? null : new HumanControl(0, sim.match.taker ?? pivot);
     this.broadcast = new BroadcastCamera(this.view.camera);
     this.hud = new Hud(hudRoot, HINT);
     this.playerMeshes = sim.players.map((p) => {
@@ -77,6 +79,11 @@ export class Game {
     this.stats = options.stats ? new StatsOverlay(hudRoot) : null;
   }
 
+  /** The player the keyboard drives right now, or null (AI vs AI). */
+  private get controlled(): number | null {
+    return this.control?.controlled ?? null;
+  }
+
   start(): void {
     this.last = performance.now();
     requestAnimationFrame((t) => this.frame(t));
@@ -89,11 +96,14 @@ export class Game {
     this.last = now;
     this.accumulator += dt * this.options.timescale;
 
-    const commands: Command[] = [];
-    if (this.controlled !== null) commands[this.controlled] = this.keyboard.command();
+    const raw = this.keyboard.command();
     let shotPower: number | null = null;
     while (this.accumulator >= PHYSICS_STEP) {
-      for (const e of this.sim.step(commands)) {
+      const commands: Command[] = [];
+      if (this.control) commands[this.control.controlled] = this.control.command(this.sim, raw);
+      const events = this.sim.step(commands);
+      this.control?.afterStep(this.sim, events);
+      for (const e of events) {
         if (e.type === 'kick' && e.kind === 'shoot' && e.player === this.controlled) shotPower = e.power;
         this.onEvent(e);
       }
@@ -101,15 +111,16 @@ export class Game {
     }
 
     const { sim, view } = this;
+    const controlled = this.controlled;
     interpolate(sim.prev, sim.curr, this.accumulator / PHYSICS_STEP, view.ball, this.playerMeshes);
-    const me = this.controlled === null ? null : this.playerMeshes[this.controlled];
+    const me = controlled === null ? null : this.playerMeshes[controlled];
     this.marker.visible = me !== null;
     if (me) this.marker.position.set(me.position.x, 0.02, me.position.z);
     // With nobody to follow, the camera follows the ball.
     this.broadcast.update(me?.position ?? view.ball.position, view.ball.position, dt);
-    this.hud.update(this.controlled === null ? null : sim.players[this.controlled], dt, shotPower);
+    this.hud.update(controlled === null ? null : sim.players[controlled], dt, shotPower);
     this.hud.setClock(sim.match.clock.half, TUNING.match.halfLength - sim.match.clock.elapsed);
-    if (this.controlled !== null && me) this.debug?.update(sim, this.controlled, me.position);
+    if (controlled !== null && me) this.debug?.update(sim, controlled, me.position);
 
     view.renderer.render(view.scene, view.camera);
     this.stats?.update(view.renderer, dt);
@@ -133,10 +144,6 @@ export class Game {
         break;
       case 'restart':
         this.hud.flash(RESTART_NAMES[e.restart.kind], 1.5);
-        // Your team's restart: you take it. (Proper switching arrives with HumanControl.)
-        if (this.controlled !== null && e.taker !== null && this.sim.players[e.taker].team === this.sim.players[this.controlled].team) {
-          this.controlled = e.taker;
-        }
         break;
       case 'halfTime':
         this.hud.flash(`Half time · ${scoreLine(e.score)}`, TUNING.match.halfTimePause);
