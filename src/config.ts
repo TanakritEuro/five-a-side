@@ -217,6 +217,30 @@ export const TUNING = {
     /** The team brain re-plans every this many steps. */
     brainInterval: 6,
   },
+  support: {
+    /** Candidate spots: a grid this many metres apart, from this far behind the ball, kept this far off the boards. */
+    grid: 3,
+    behind: 6,
+    margin: 1.5,
+    /** Spots between these distances (m) from the ball, ideally this far. */
+    minDistance: 4,
+    maxDistance: 18,
+    ideal: 10,
+    /** Space counts up to this distance (m) from the nearest opponent. */
+    spaceCap: 5,
+    /** Supporters take spots at least this far (m) apart. */
+    spacing: 4.5,
+    /** Score weights: pass safety, angle on goal, passing distance, space, progress. */
+    wSafety: 2,
+    wAngle: 2,
+    wDistance: 1,
+    wSpace: 1,
+    wProgress: 1,
+    /** A supporter whose spot is this far (m) ahead of the ball sprints there (a run). */
+    runDistance: 6,
+    /** The intended receiver of a pass goes for it unless someone else gets there this much (s) sooner. */
+    receiverPreference: 0.5,
+  },
   separation: {
     /** Minimum gap (m) kept between two players' capsules. */
     gap: 0.05,

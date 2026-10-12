@@ -20,7 +20,7 @@ export interface GameOptions {
   seed: number;
   /** Game-time multiplier (debug: `?timescale=0.25`). */
   timescale: number;
-  /** `?debug`: reach and possession rings, kick paths, a state readout. */
+  /** `?debug`: AI states, support spots, pass lanes, chase points; rings and a readout for your player. */
   debug: boolean;
   /** `?stats`: fps, draw calls and triangles. */
   stats: boolean;
@@ -75,7 +75,7 @@ export class Game {
     });
     this.marker = createMarker();
     this.view.scene.add(this.marker);
-    this.debug = options.debug ? new DebugOverlay(this.view.scene, hudRoot) : null;
+    this.debug = options.debug ? new DebugOverlay(this.view.scene, hudRoot, this.view.camera) : null;
     this.stats = options.stats ? new StatsOverlay(hudRoot) : null;
   }
 
@@ -124,7 +124,7 @@ export class Game {
     this.broadcast.update(me?.position ?? view.ball.position, view.ball.position, dt);
     this.hud.update(controlled === null ? null : sim.players[controlled], dt, shotPower);
     this.hud.setClock(sim.match.clock.half, TUNING.match.halfLength - sim.match.clock.elapsed);
-    if (controlled !== null && me) this.debug?.update(sim, controlled, me.position);
+    this.debug?.update(sim, this.playerMeshes, controlled);
 
     view.renderer.render(view.scene, view.camera);
     this.stats?.update(view.renderer, dt);

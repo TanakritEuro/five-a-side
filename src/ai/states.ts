@@ -15,6 +15,12 @@ export type AiState =
   | { kind: 'chase'; point: Vec2 }
   /** Close down the opponent on the ball, getting goal-side of them. */
   | { kind: 'press'; carrier: number }
+  /** Our pass is on its way to them: go to where they'll meet it. */
+  | { kind: 'receive'; point: Vec2 }
+  /** Attacking: get to a support spot to offer a pass... */
+  | { kind: 'support'; spot: Vec2 }
+  /** ...or sprint to one well ahead of the ball (a run in behind). */
+  | { kind: 'run'; spot: Vec2 }
   /** Sit behind the presser, goal-side, in case they're beaten. */
   | { kind: 'cover' }
   /** Stay goal-side of `opponent`, a little towards the ball. */
@@ -44,6 +50,15 @@ export function offBall(sim: Sim, p: Player, state: AiState, plan: TeamPlan): Co
       const s = arrive(p, slot);
       return steer({ move: separate(p, s.move, sim.players), sprint: s.sprint || (hurry && far(p, slot, 4)) });
     }
+    case 'support': {
+      const s = arrive(p, state.spot, 0.4);
+      return steer({ move: separate(p, s.move, sim.players), sprint: s.sprint || far(p, state.spot, 6) });
+    }
+    case 'run': {
+      const s = far(p, state.spot, 2) ? seek(p, state.spot, true) : arrive(p, state.spot, 0.4);
+      return steer({ move: separate(p, s.move, sim.players), sprint: s.sprint });
+    }
+    case 'receive':
     case 'chase': {
       // Close to the ball: go straight at it to take it.
       const b = ballPos(sim);

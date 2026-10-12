@@ -54,15 +54,21 @@ describe('team brain', () => {
     expect(distToGoal(after.cover!)).toBeLessThan(distToGoal(after.presser!));
   });
 
-  it('marks goal-side of the man', async () => {
+  it('marks goal-side of the man most of the time, even when he makes runs', async () => {
     const sim = await awayAttack(-6, 0);
-    steps(sim, 150);
-    const plan = sim.ai!.planOf(0);
-    expect(plan.marks.size).toBeGreaterThan(0);
-    for (const [marker, man] of plan.marks) {
-      // Home defends -X, so goal-side means a smaller x.
-      expect(sim.players[marker].pos.x).toBeLessThan(sim.players[man].pos.x + 0.5);
+    let samples = 0;
+    let goalSide = 0;
+    for (let i = 0; i < 240; i++) {
+      sim.step([]);
+      if (i < 60 || i % 6) continue;
+      for (const [marker, man] of sim.ai!.planOf(0).marks) {
+        samples++;
+        // Home defends -X, so goal-side means a smaller x.
+        if (sim.players[marker].pos.x < sim.players[man].pos.x + 0.5) goalSide++;
+      }
     }
+    expect(samples).toBeGreaterThan(20);
+    expect(goalSide / samples).toBeGreaterThan(0.7);
   });
 
   it('sends a teammate to press when a human calls for it (L)', async () => {

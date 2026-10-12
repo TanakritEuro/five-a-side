@@ -70,6 +70,8 @@ export class Sim {
   /** Per team: the tick until which a human's call for a teammate to press (L) stands. */
   private readonly pressCallUntil = [0, 0];
   private readonly pressHeld = [false, false];
+  /** The last pass played to a teammate (for the AI's receiver), until someone controls the ball. */
+  lastPass: { player: number; receiver: number; tick: number } | null = null;
 
   static async create(options: SimOptions): Promise<Sim> {
     return new Sim(await createPhysics(), options);
@@ -140,6 +142,8 @@ export class Sim {
     const match = this.match;
 
     this.possession.update(this.players, this.ball.translation(), dt);
+    // Someone has it: the pass (if there was one) is over.
+    if (this.possession.owner !== null) this.lastPass = null;
     this.ai?.update(this);
     // Nobody moves during the half-time break or after full time.
     const stopped = match.phase.kind === 'halfTime' || match.over;
@@ -210,6 +214,7 @@ export class Sim {
   private onPlayed(event: SimEvent, events: SimEvent[]): void {
     events.push(event);
     if (event.type === 'kick') {
+      this.lastPass = event.kind === 'pass' && event.receiver !== null ? { player: event.player, receiver: event.receiver, tick: this.tick } : null;
       this.shot =
         event.kind === 'shoot' && event.atGoal
           ? { player: event.player, tracker: new ShotTracker(this.attackDir(this.players[event.player].team)) }
@@ -252,6 +257,7 @@ export class Sim {
   private setRestart(restart: Restart, events: SimEvent[]): void {
     this.placeBall(restart.at);
     this.possession.reset();
+    this.lastPass = null;
     this.shot = null;
     const taker = chooseTaker(this.players, restart);
     for (const p of this.players) {

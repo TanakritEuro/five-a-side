@@ -7,6 +7,7 @@ import type { Sim } from '../sim/sim';
 import { shiftedSlot } from '../team/formation';
 import { ballPos, goalSide, inOwnArea, ownGoal } from './geometry';
 import { earliestIntercept, timeToReach } from './intercept';
+import { assignSpots, scoreSupportSpots, type ScoredSpot } from './support';
 
 /**
  * The phase of play from a team's point of view: they have the ball, the other team has
@@ -19,20 +20,26 @@ export interface TeamPlan {
   phase: Phase;
   /** Just turned over (either way): everyone hurries to their new job. */
   transition: boolean;
-  /** Loose ball: who goes for it, and where they'll meet it. */
-  chaser: { id: number; point: Vec2 } | null;
+  /** Loose ball: who goes for it, where they'll meet it, and whether it was passed to them. */
+  chaser: { id: number; point: Vec2; receiving: boolean } | null;
   /** Defending: who closes down the player on the ball... */
   presser: number | null;
   /** ...who sits behind the presser, goal-side... */
   cover: number | null;
   /** ...and who picks up whom (our player → their player). */
   marks: Map<number, number>;
+  /** Attacking: where each supporter goes to offer a pass (our player → spot)... */
+  supports: Map<number, Vec2>;
+  /** ...and who among them is making a run (sprinting to a spot well ahead of the ball). */
+  runner: number | null;
+  /** The support spots considered, best first (for the debug overlay). */
+  spots: ScoredSpot[];
   /** Everyone's slot in the shifted formation (the default job). */
   slots: Map<number, Vec2>;
 }
 
 export function emptyPlan(): TeamPlan {
-  return { phase: 'loose', transition: false, chaser: null, presser: null, cover: null, marks: new Map(), slots: new Map() };
+  return { phase: 'loose', transition: false, chaser: null, presser: null, cover: null, marks: new Map(), supports: new Map(), runner: null, spots: [], slots: new Map() };
 }
 
 /**
@@ -42,7 +49,8 @@ export function emptyPlan(): TeamPlan {
  * - defending: the player who can get goal-side of the ball carrier first presses, the
  *   next best covers behind them, and the rest mark the most dangerous opponents (the
  *   nearest to our goal), leaving anyone well up the other end to the formation;
- * - attacking: everyone off the ball holds their slot (support spots come next).
+ * - attacking: everyone off the ball goes to a support spot (support.ts), the one
+ *   furthest ahead making a run.
  * Keepers keep goal unless they're the one to chase a loose ball inside their area.
  */
 export class TeamBrain {
@@ -65,7 +73,7 @@ export class TeamBrain {
     const players = sim.players.filter((p) => p.team === this.team);
     for (const p of players) slots.set(p.id, shiftedSlot(p.spec.slot, b, dir, phase === 'attack'));
 
-    const plan: TeamPlan = { phase, transition, chaser: null, presser: null, cover: null, marks: new Map(), slots };
+    const plan: TeamPlan = { ...emptyPlan(), phase, transition, slots };
     // Players with their own job this step: the one on the ball and a restart's taker.
     const free = players.filter((p) => p.id !== owner && p.id !== sim.match.taker);
     const outfield = free.filter((p) => p.spec.role !== 'keeper');
@@ -81,23 +89,48 @@ export class TeamBrain {
       if (last === null || sim.players[last].team !== this.team) this.assignMarks(sim, plan, outfield, null);
     } else if (phase === 'defend' && owner !== null) {
       this.assignDefence(sim, plan, outfield, sim.players[owner]);
+    } else if (phase === 'attack') {
+      this.assignSupport(sim, plan, outfield);
     }
     this.plan = plan;
   }
 
-  /** The player who gets to the loose ball first. Keepers only come for it inside their area. */
-  private chaser(sim: Sim, players: readonly Player[], path: BallPath, elapsed: number): { id: number; point: Vec2 } | null {
-    let best: { id: number; point: Vec2 } | null = null;
-    let bestT = Infinity;
+  /** Supporters to the best spots round the ball; the one sent furthest ahead makes a run. */
+  private assignSupport(sim: Sim, plan: TeamPlan, outfield: Player[]): void {
+    const b = ballPos(sim);
+    const dir = sim.attackDir(this.team);
+    const opponents = sim.players.filter((p) => p.team !== this.team);
+    plan.spots = scoreSupportSpots(b, dir, opponents);
+    plan.supports = assignSpots(plan.spots, outfield);
+    let furthest = TUNING.support.runDistance;
+    for (const [id, spot] of plan.supports) {
+      const ahead = (spot.x - b.x) * dir;
+      if (ahead > furthest) {
+        furthest = ahead;
+        plan.runner = id;
+      }
+    }
+  }
+
+  /**
+   * The player who gets to the loose ball first. Keepers only come for it inside their
+   * area. The intended receiver of our pass goes for it unless a teammate would get there
+   * clearly sooner, so two players don't both go for every pass.
+   */
+  private chaser(sim: Sim, players: readonly Player[], path: BallPath, elapsed: number): { id: number; point: Vec2; receiving: boolean } | null {
+    let best: { id: number; point: Vec2; t: number } | null = null;
+    let receiver: { id: number; point: Vec2; t: number } | null = null;
+    const intended = sim.lastPass?.receiver;
     for (const p of players) {
       const hit = earliestIntercept(p, path, elapsed);
       if (p.spec.role === 'keeper' && !inOwnArea(sim, this.team, hit.point)) continue;
-      if (hit.t < bestT) {
-        bestT = hit.t;
-        best = { id: p.id, point: hit.point };
-      }
+      if (p.id === intended) receiver = { id: p.id, point: hit.point, t: hit.t };
+      if (!best || hit.t < best.t) best = { id: p.id, point: hit.point, t: hit.t };
     }
-    return best;
+    if (receiver && best && receiver.t <= best.t + TUNING.support.receiverPreference) {
+      return { id: receiver.id, point: receiver.point, receiving: true };
+    }
+    return best && { id: best.id, point: best.point, receiving: false };
   }
 
   private assignDefence(sim: Sim, plan: TeamPlan, outfield: Player[], carrier: Player): void {

@@ -72,10 +72,14 @@ export class Ai {
       const current = this.states[p.id];
       return current?.kind === 'dribble' ? current : { kind: 'dribble', plan: runPlan(this.rng) };
     }
-    if (plan.chaser?.id === p.id && owner === null) return { kind: 'chase', point: plan.chaser.point };
+    if (plan.chaser?.id === p.id && owner === null) {
+      return plan.chaser.receiving ? { kind: 'receive', point: plan.chaser.point } : { kind: 'chase', point: plan.chaser.point };
+    }
     if (p.spec.role === 'keeper') return { kind: 'keeper' };
     if (owner !== null && plan.presser === p.id) return { kind: 'press', carrier: owner };
     if (owner !== null && plan.cover === p.id) return { kind: 'cover' };
+    const spot = owner !== null ? plan.supports.get(p.id) : undefined;
+    if (spot) return plan.runner === p.id ? { kind: 'run', spot } : { kind: 'support', spot };
     const marked = plan.marks.get(p.id);
     if (marked !== undefined) return { kind: 'mark', opponent: marked };
     return { kind: 'hold' };
