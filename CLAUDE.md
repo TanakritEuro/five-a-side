@@ -24,12 +24,23 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Scaffold only. `src/main.ts` renders the cage (boards, netting, markings), both goals
-and two teams of placeholder capsule players standing in the diamond formation. Space
-fires a random test shot with curl from where the ball lies, R resets it to the centre
-spot, and goals are counted for either end. The players have kinematic colliders but
-don't move. A broadcast camera follows the ball along the pitch. `tests/arena.test.ts`
-checks the boards, nets and formation. Start with Milestone 1.
+Milestone 1 done (plan and notes in `docs/milestone-1.md`). One controllable player (the
+home pivot) and the ball in the cage, with no opponents yet. The player runs, sprints on
+stamina, dribbles by touches, passes along the ground (J) and shoots, holding K for power.
+Goals are scored and counted. A ball over the netting gives a kick-in or goal clearance,
+and a goal is followed by a kick-off. The headless `Sim` (`src/sim/`) runs everything;
+`Game` wires the keyboard, the interpolated render, the HUD and the camera to it. The
+nine other players come back in Milestone 2. Start there.
+
+Things that aren't obvious from the code:
+- Rapier clamps angular velocity to a quarter turn per step (47 rad/s at 60 Hz). The ball
+  therefore has no friction with the turf: rolling resistance and the turf's grip on a
+  bounce are modelled in `ball/forces.ts`, applied identically in the game and in the
+  ghost-ball worlds. Keep it that way, or fast passes skid down to ~5 m/s.
+- Each `Sim` owns its `Ghost` worlds, because Rapier carries contact state between
+  steps and sharing ghosts would couple simulations and break determinism.
+- Dribbling has two assists (`dribbleMove`): letting go of the controls with the ball
+  means "stop it", and turning away from a ball that's out of reach goes to it first.
 
 ## The game
 
@@ -129,16 +140,27 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/math.ts` — `Vec2` / `Vec3`, seeded PRNG (`createRng`), Gaussian sampling, smoothing.
 - `src/physics.ts` — Rapier world, ground, boards and netting, both goals, ball, player bodies, collider tags.
 - `src/ball/aero.ts` — drag and Magnus force (ported from the penalty game).
+- `src/ball/forces.ts` — all forces on the ball each step: aero, rolling resistance, bounce grip.
+- `src/ball/trajectory.ts` — ghost-ball launch solver (shots, ground passes) and predicted paths.
+- `src/ball/power.ts`, `spin.ts`, `outcome.ts` — shot power and error, spin from contact, shot outcomes (ported).
+- `src/sim/sim.ts` — `Sim`: the headless world; `step(commands)` returns `SimEvent`s.
+- `src/sim/command.ts`, `events.ts` — what drives players, and what the sim reports.
+- `src/sim/player.ts`, `locomotion.ts` — player state and attributes; the movement model.
+- `src/sim/possession.ts`, `dribble.ts`, `kick.ts` — who has the ball; touches, traps and first touches; passes and shots.
+- `src/sim/rules.ts` — match-phase state machine: goals, ball out, restarts.
 - `src/team/formation.ts` — formation slots in the team's own frame and their world positions.
-- `src/team/teams.ts` — invented teams and kits.
+- `src/team/teams.ts`, `lineup.ts` — invented teams and kits; who's on the pitch.
+- `src/game.ts` — `Game`: keyboard → `Sim` → interpolated render, HUD and camera.
+- `src/input/keyboard.ts` — keys to `Command`s (screen-relative movement).
+- `src/render/interpolate.ts` — draws meshes between the last two steps.
+- `src/ui/hud.ts`, `src/debug.ts` — score, status, power meter, stamina; `?debug` / `?stats` overlays.
 - `src/scene.ts` — renderer, lights, pitch, markings, walls, goals, placeholder player meshes.
-- `src/camera.ts` — broadcast camera that follows the ball.
-- `src/main.ts` — scaffold entry point and loop.
-- `tests/` — Vitest.
+- `src/camera.ts` — broadcast camera that follows the controlled player and the ball.
+- `src/main.ts` — entry point; reads the URL flags.
+- `tests/` — Vitest. `helpers.ts` has a sim factory, command helpers and a random driver.
 
-As the game grows, add `src/sim/` (world, match, clock, possession), `src/ai/`,
-`src/input/`, `src/characters/`, `src/ui/`, `src/audio/`, `src/replay/` and a `Game`
-class that wires them, as in the penalty game.
+As the game grows, add `src/ai/`, `src/characters/`, `src/audio/`, `src/replay/`, and
+grow `src/sim/` (match clock, halves), as in the penalty game.
 
 ## Conventions
 
@@ -183,9 +205,9 @@ code to this game's axes (goal lines on X, not Z) and keep the sim/presentation 
 | When | What | From `../penalty-shootout/` |
 | --- | --- | --- |
 | Done | Drag and Magnus force | `src/shooting/aero.ts` |
-| M1 | Launch solver with ghost ball (passes, shots) | `src/shooting/trajectory.ts` |
-| M1 | Shot power curve, overpower drift, scatter | `src/shooting/power.ts`, `spin.ts` |
-| M1 | Goal / woodwork outcome from contact events | `src/shooting/outcome.ts` |
+| Done | Launch solver with ghost ball (passes, shots) | `src/shooting/trajectory.ts` |
+| Done | Shot power curve, overpower drift, scatter | `src/shooting/power.ts`, `spin.ts` |
+| Done | Goal / woodwork outcome from contact events | `src/shooting/outcome.ts` |
 | M3 | Keeper body, dive decision, reach limit | `src/keeper/` |
 | M5 | Humanoid rig, Quaternius Mannequin driver, model build script | `src/characters/rig.ts`, `skinned.ts`, `scripts/prepare-models.mjs`, `public/models/` |
 | M6 | Net ripple, ball trail | `src/net.ts`, `src/trail.ts` |

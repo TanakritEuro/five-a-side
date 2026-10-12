@@ -1,5 +1,27 @@
 # Milestone 1 plan: one player and the ball
 
+## Status: done
+
+Where the build differs from the plan below:
+
+- **The ball rolls without Rapier's friction.** Rapier clamps angular velocity to a
+  quarter turn per step (47 rad/s at 60 Hz), so a ball rolling faster than about 5 m/s
+  skidded down to that speed. The turf now has zero friction with the ball.
+  `ball/forces.ts` models rolling resistance, the turf's grip on a bounce (Coulomb
+  friction scaled by the impact speed) and a rolling spin for the renderer.
+- **Rolling resistance acts on the velocity**, rather than through a torque with
+  matching spin as first planned. It is a constant deceleration (`ball.rollingResistance`).
+- **Dribble assists** (`dribbleMove`). Letting go of the controls with the ball means
+  "stop it": the player goes to the ball and traps it instead of stopping dead. Turning
+  away from a ball that is out of reach sends the player to the ball first. Touches
+  go towards the input direction, up to 60° off the way the player faces.
+- **The kick-in / goal clearance** for M1 just places the ball, clears players off the
+  spot and pauses briefly. Set pieces with a taker come in M2 and M3.
+- **Both kicks are in `sim/kick.ts`.** Soft shots from long range are hit as low drives
+  instead of loops; the solver would otherwise lob them.
+- The order of commits differed: locomotion and input went in with the `Sim` skeleton, so
+  every commit is playable.
+
 Goal: one controllable footballer who runs, sprints, dribbles by touches, plays a
 ground pass and hits a charged shot in the cage. Goals are detected and balls over the
 netting are reset. Rendering is interpolated and the camera follows the action. All of

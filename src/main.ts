@@ -1,5 +1,5 @@
 // Entry point. URL flags: ?seed=123 (fix the random seed), ?timescale=0.25 (slow motion),
-// ?debug (expose `game` on window).
+// ?debug (overlays, and `game` on window), ?stats (fps, draw calls).
 
 import { Game } from './game';
 
@@ -13,6 +13,8 @@ const game = await Game.create(
   {
     seed: seedParam !== null ? Number(seedParam) : Date.now(),
     timescale: Number.isFinite(timescale) && timescale > 0 ? timescale : 1,
+    debug: params.has('debug'),
+    stats: params.has('stats'),
   },
 );
 game.start();

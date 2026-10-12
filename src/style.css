@@ -119,3 +119,21 @@ body {
 #stamina-fill.low {
   background: #ff9a3c;
 }
+
+#debug,
+#stats {
+  position: absolute;
+  right: 16px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(10, 14, 20, 0.75);
+  font: 12px/1.4 ui-monospace, monospace;
+}
+
+#stats {
+  top: 14px;
+}
+
+#debug {
+  top: 46px;
+}

@@ -3,6 +3,7 @@ import { describeOutcome } from './ball/outcome';
 import { BroadcastCamera } from './camera';
 import { TUNING } from './config';
 import { PHYSICS_STEP } from './constants';
+import { DebugOverlay, StatsOverlay } from './debug';
 import { Keyboard } from './input/keyboard';
 import { interpolate } from './render/interpolate';
 import { createMarker, createPlayerMesh, createScene, type GameScene } from './scene';
@@ -18,6 +19,10 @@ export interface GameOptions {
   seed: number;
   /** Game-time multiplier (debug: `?timescale=0.25`). */
   timescale: number;
+  /** `?debug`: reach and possession rings, kick paths, a state readout. */
+  debug: boolean;
+  /** `?stats`: fps, draw calls and triangles. */
+  stats: boolean;
 }
 
 const HINT = 'WASD: move · Shift: sprint · J: pass · K (hold): shoot';
@@ -35,6 +40,8 @@ export class Game {
   private readonly hud: Hud;
   private readonly playerMeshes: THREE.Object3D[];
   private readonly marker: THREE.Object3D;
+  private readonly debug: DebugOverlay | null;
+  private readonly stats: StatsOverlay | null;
   /** The player the keyboard drives. */
   private controlled = 0;
   private accumulator = 0;
@@ -62,6 +69,8 @@ export class Game {
     });
     this.marker = createMarker();
     this.view.scene.add(this.marker);
+    this.debug = options.debug ? new DebugOverlay(this.view.scene, hudRoot) : null;
+    this.stats = options.stats ? new StatsOverlay(hudRoot) : null;
   }
 
   start(): void {
@@ -91,13 +100,16 @@ export class Game {
     this.marker.position.set(me.position.x, 0.02, me.position.z);
     this.broadcast.update(me.position, view.ball.position, dt);
     this.hud.update(sim.players[this.controlled], dt, shotPower);
+    this.debug?.update(sim, this.controlled, me.position);
 
     view.renderer.render(view.scene, view.camera);
+    this.stats?.update(view.renderer, dt);
     requestAnimationFrame((t) => this.frame(t));
   }
 
   /** React to what happened in the simulation (status text now; sound and animation later). */
   private onEvent(e: SimEvent): void {
+    if (e.type === 'kick') this.debug?.showPath(e.path);
     switch (e.type) {
       case 'goal':
         this.hud.setScore(e.score[0], e.score[1]);
