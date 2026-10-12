@@ -28,10 +28,19 @@ export class Ai {
     }
   }
 
-  command(_sim: Sim, p: Player): Command {
+  command(sim: Sim, p: Player): Command {
+    const phase = sim.match.phase;
+    if (phase.kind === 'restart' && phase.taker === p.id) return this.takeRestart(sim, phase.elapsed);
     const slot = this.slots[p.id];
     if (!slot) return IDLE;
     const steer = arrive(p, slot);
     return { ...IDLE, move: steer.move, sprint: steer.sprint };
+  }
+
+  /** Take a restart after a moment's pause: for now, a pass the way the taker faces. */
+  private takeRestart(sim: Sim, waited: number): Command {
+    if (waited < TUNING.match.aiTakerDelay) return IDLE;
+    // Tap J (a pass needs a fresh press, so keep tapping until it's taken).
+    return { ...IDLE, pass: sim.tick % 10 < 5 };
   }
 }

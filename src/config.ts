@@ -169,13 +169,21 @@ export const TUNING = {
     /** ...or once it has come back out this far from the goal line (m). */
     reboundDistance: 8.0,
   },
-  rules: {
+  match: {
+    /** Game seconds per half. The clock only runs while the ball is in play. */
+    halfLength: 180,
+    /** Seconds of the half-time break. */
+    halfTimePause: 4,
     /** Seconds between a goal and the kick-off. */
     goalDelay: 2.5,
-    /** Seconds between the ball going over the netting and the restart. */
+    /** Seconds between the ball going over the netting and the set piece. */
     outDelay: 1.5,
-    /** Seconds everyone stands still at a restart before play resumes. */
-    restartFreeze: 0.6,
+    /** Opponents keep this far (m) from the ball at a kick-in or goal clearance. */
+    setPieceDistance: 3,
+    /** A restart's taker stands this far (m) behind the ball. */
+    takerOffset: 0.6,
+    /** An AI taker kicks after this many seconds. */
+    aiTakerDelay: 0.8,
   },
   ball: {
     /** Scales the Magnus force: 1 is physical, higher bends shots more. */

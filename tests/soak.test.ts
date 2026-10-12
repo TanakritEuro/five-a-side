@@ -6,9 +6,11 @@ import type { SimEvent } from '../src/sim/events';
 import { createSim, randomDriver, STEPS_PER_SECOND } from './helpers';
 
 const SECONDS = 90;
-const R = TUNING.rules;
-/** Longest the ball can legitimately be dead: a goal or an out, then the restart freeze. */
-const MAX_DEAD = Math.max(R.goalDelay, R.outDelay) + R.restartFreeze + 0.1;
+const R = TUNING.match;
+/** Longest a goal or out pause can last before the restart is set. */
+const MAX_PAUSE = Math.max(R.goalDelay, R.outDelay) + 0.1;
+/** A restart waits for its taker; a random player gets round to kicking it eventually. */
+const MAX_RESTART_WAIT = 30;
 let goals = 0;
 
 describe('soak: a frantic player for 90 s', () => {
@@ -16,7 +18,8 @@ describe('soak: a frantic player for 90 s', () => {
     const sim = await createSim(seed);
     const drive = randomDriver(seed * 7919, sim);
     const counts: Partial<Record<SimEvent['type'], number>> = {};
-    let dead = 0;
+    let paused = 0;
+    let waiting = 0;
 
     for (let i = 0; i < SECONDS * STEPS_PER_SECOND; i++) {
       for (const e of sim.step([drive(i)])) counts[e.type] = (counts[e.type] ?? 0) + 1;
@@ -30,10 +33,13 @@ describe('soak: a frantic player for 90 s', () => {
         expect(Math.abs(p.pos.z)).toBeLessThanOrEqual(HALF_WIDTH - PLAYER_RADIUS + 1e-9);
       }
       // Out of the cage only ever while the rules know about it.
-      if (outOfCage(b)) expect(sim.rules.phase.kind).toBe('out');
+      if (outOfCage(b)) expect(sim.match.phase.kind).toBe('out');
 
-      dead = sim.rules.inPlay ? 0 : dead + PHYSICS_STEP;
-      expect(dead).toBeLessThan(MAX_DEAD);
+      const kind = sim.match.phase.kind;
+      paused = kind === 'goal' || kind === 'out' ? paused + PHYSICS_STEP : 0;
+      waiting = kind === 'restart' ? waiting + PHYSICS_STEP : 0;
+      expect(paused).toBeLessThan(MAX_PAUSE);
+      expect(waiting).toBeLessThan(MAX_RESTART_WAIT);
     }
 
     goals += counts.goal ?? 0;

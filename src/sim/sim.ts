@@ -1,29 +1,30 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
-import { applyBallForces } from '../ball/forces';
 import { Ai } from '../ai/ai';
+import { applyBallForces } from '../ball/forces';
 import { ShotTracker } from '../ball/outcome';
 import { Ghost } from '../ball/trajectory';
 import { BALL_RADIUS, PHYSICS_STEP } from '../constants';
 import { createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
 import { createPhysics, type Physics } from '../physics';
 import { IDLE, type Command } from './command';
-import type { SimEvent } from './events';
 import { dribbleMove, playBall } from './dribble';
+import type { SimEvent } from './events';
 import { tryKick, updateKickButtons } from './kick';
 import { stepLocomotion } from './locomotion';
-import { createPlayer, integratePlayer, placePlayer, syncBody, type Player, type PlayerSpec } from './player';
+import { Match, type MatchAction } from './match';
+import { createPlayer, integratePlayer, syncBody, type Player, type PlayerSpec } from './player';
 import { Possession } from './possession';
-import { Rules, type Restart, type RulesContext } from './rules';
+import { chooseTaker, holdRestartShape, placeForRestart } from './restarts';
+import type { Restart, RulesContext } from './rules';
 import { separatePlayers } from './separation';
-
-/** Players are moved at least this far (m) from the ball when it is placed for a restart. */
-const RESTART_CLEARANCE = 1;
 
 export interface SimOptions {
   seed: number;
   players: readonly PlayerSpec[];
   /** Drive every player without a command with the AI (otherwise they stand still). */
   ai?: boolean;
+  /** Start with a kick-off (a real match) rather than straight into open play (most tests). */
+  kickoff?: boolean;
 }
 
 export interface PlayerSnapshot {
@@ -39,7 +40,7 @@ export interface Snapshot {
 }
 
 /**
- * The whole game world, headless: physics, ball, players, possession and the rules.
+ * The whole game world, headless: physics, ball, players, possession and the match.
  * Advances only in fixed steps of `PHYSICS_STEP`, driven by one `Command` per player, and
  * takes all randomness from its seeded RNG, so the same seed and the same commands always
  * give the same match.
@@ -51,7 +52,7 @@ export class Sim {
   readonly ghost = new Ghost();
   readonly players: Player[];
   readonly possession = new Possession();
-  readonly rules = new Rules();
+  readonly match: Match;
   /** Drives the players nobody else is driving; null when they should stand still. */
   readonly ai: Ai | null;
   /** Steps taken so far. */
@@ -73,7 +74,9 @@ export class Sim {
     this.rng = createRng(options.seed);
     this.ai = options.ai ? new Ai() : null;
     this.players = options.players.map((spec, id) => createPlayer(physics, id, spec));
+    this.match = new Match(options.kickoff ?? false);
     this.placeBall({ x: 0, z: 0 });
+    if (this.match.phase.kind === 'restart') this.setRestart(this.match.phase.restart, []);
     this.curr = this.emptySnapshot();
     this.prev = this.emptySnapshot();
     this.writeSnapshot(this.curr);
@@ -84,9 +87,9 @@ export class Sim {
     return this.physics.ball;
   }
 
-  /** Which way a team is attacking: +1 towards +X. The home team (0) attacks +X first. */
+  /** Which way a team is attacking: +1 towards +X. Ends swap at half time. */
   attackDir(team: 0 | 1): 1 | -1 {
-    return team === 0 ? 1 : -1;
+    return this.match.attackDir(team);
   }
 
   /** Put the ball down at rest on the ground at `at`. */
@@ -105,14 +108,16 @@ export class Sim {
     const events: SimEvent[] = [];
     const dt = PHYSICS_STEP;
     const { world, events: queue } = this.physics;
+    const match = this.match;
+
     this.possession.update(this.players, this.ball.translation());
     this.ai?.update(this);
-    const resolved = this.players.map((p) => commands[p.id] ?? this.ai?.command(this, p) ?? IDLE);
-    // Everyone holds still while a restart is set up.
-    const command = (p: Player) => (this.rules.frozen ? IDLE : resolved[p.id]);
+    // Nobody moves during the half-time break or after full time.
+    const stopped = match.phase.kind === 'halfTime' || match.over;
+    const resolved = this.players.map((p) => (stopped ? IDLE : (commands[p.id] ?? this.ai?.command(this, p) ?? IDLE)));
 
     for (const p of this.players) {
-      const cmd = command(p);
+      const cmd = resolved[p.id];
       const onBall = this.possession.owner === p.id;
       const move = dribbleMove(p, cmd.move, this.ball, this.possession);
       stepLocomotion(p, { move, sprint: cmd.sprint, onBall, pace: p.attrs.pace }, dt);
@@ -120,18 +125,28 @@ export class Sim {
       p.touchCooldown = Math.max(0, p.touchCooldown - dt);
     }
     separatePlayers(this.players);
+    if (match.phase.kind === 'restart') {
+      const b = this.ball.translation();
+      holdRestartShape(this.players, match.phase.restart, match.taker, { x: b.x, z: b.z }, (t) => this.attackDir(t));
+    }
     for (const p of this.players) syncBody(p);
+
     for (const p of this.players) {
-      const cmd = command(p);
-      updateKickButtons(p, cmd);
-      if (!this.rules.inPlay) {
-        // The ball is dead: no kicks or touches until play restarts.
+      updateKickButtons(p, resolved[p.id]);
+      if (match.inPlay) {
+        const event = tryKick(p, this) ?? playBall(p, this.ball, this.possession, resolved[p.id].move, this.rng, dt);
+        if (event) this.onPlayed(event, events);
+      } else if (p.id === match.taker) {
+        // Only the taker may play a dead ball, and only by kicking it.
+        const event = tryKick(p, this);
+        if (event) {
+          match.onTaken();
+          this.onPlayed(event, events);
+        }
+      } else {
         p.charge = null;
         p.pendingKick = null;
-        continue;
       }
-      const event = tryKick(p, this) ?? playBall(p, this.ball, this.possession, cmd.move, this.rng, dt);
-      if (event) this.onPlayed(event, events);
     }
 
     applyBallForces(this.ball);
@@ -141,8 +156,8 @@ export class Sim {
     });
 
     const ball = this.ball.translation();
-    const restart = this.rules.update(ball, dt, this.rulesContext(), events);
-    if (restart) this.setRestart(restart);
+    const action = match.update(ball, dt, this.rulesContext(), events);
+    if (action) this.apply(action, events);
     if (this.shot) {
       const outcome = this.shot.tracker.update(dt, ball, this.ball.linvel());
       if (outcome) {
@@ -154,7 +169,7 @@ export class Sim {
     this.tick++;
     this.writeSnapshot(this.curr);
     if (this.teleported) {
-      copySnapshot(this.curr, this.prev); // don't draw the ball sliding back to the spot
+      copySnapshot(this.curr, this.prev); // don't draw everyone sliding to their spots
       this.teleported = false;
     }
     return events;
@@ -186,7 +201,7 @@ export class Sim {
       return;
     }
     const id = playerColliders.get(h1) ?? playerColliders.get(h2);
-    if (id === undefined || id === this.possession.owner || !this.rules.inPlay) return;
+    if (id === undefined || id === this.possession.owner || !this.match.inPlay) return;
     // The kicker's own body brushing the ball as it leaves their foot isn't a deflection.
     if (id === this.possession.lastTouch && this.players[id].touchCooldown > 0) return;
     this.possession.deflect(id);
@@ -198,27 +213,25 @@ export class Sim {
     return { lastTouchTeam: last === null ? null : this.players[last].team, attackDir: (t) => this.attackDir(t) };
   }
 
-  /** Place the ball for a restart; line everyone up for a kick-off, or clear them off the spot. */
-  private setRestart(restart: Restart): void {
+  private apply(action: MatchAction, events: SimEvent[]): void {
+    this.setRestart(action.restart, events);
+  }
+
+  /** Place the ball for a restart, pick the taker, and line everyone up. */
+  private setRestart(restart: Restart, events: SimEvent[]): void {
     this.placeBall(restart.at);
     this.possession.reset();
     this.shot = null;
+    const taker = chooseTaker(this.players, restart);
     for (const p of this.players) {
       p.charge = null;
       p.pendingKick = null;
-      if (restart.kind === 'kickoff') {
-        placePlayer(p, p.spec.kickoff, p.spec.kickoffFacing);
-        continue;
-      }
-      const dx = p.pos.x - restart.at.x;
-      const dz = p.pos.z - restart.at.z;
-      const d = Math.hypot(dx, dz);
-      if (d < RESTART_CLEARANCE) {
-        const ux = d > 1e-3 ? dx / d : -1;
-        const uz = d > 1e-3 ? dz / d : 0;
-        placePlayer(p, { x: restart.at.x + ux * RESTART_CLEARANCE, z: restart.at.z + uz * RESTART_CLEARANCE }, p.facing);
-      }
+      placeForRestart(p, restart, taker, this.match.clock.half, this.attackDir(p.team));
     }
+    holdRestartShape(this.players, restart, taker, restart.at, (t) => this.attackDir(t));
+    for (const p of this.players) p.body.setTranslation({ x: p.pos.x, y: p.body.translation().y, z: p.pos.z }, true);
+    this.match.setTaker(taker);
+    events.push({ type: 'restart', restart, taker });
     this.teleported = true;
   }
 

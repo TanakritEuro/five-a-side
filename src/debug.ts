@@ -49,7 +49,7 @@ export class DebugOverlay {
     const v = sim.ball.linvel();
     const f = headingVec(p.facing);
     this.text.textContent = [
-      `tick ${sim.tick}  phase ${sim.rules.phase.kind}`,
+      `tick ${sim.tick}  phase ${sim.match.phase.kind}`,
       `speed ${p.speed.toFixed(2)}  stamina ${p.stamina.toFixed(2)}${p.sprinting ? '  SPRINT' : ''}`,
       `facing (${f.x.toFixed(2)}, ${f.z.toFixed(2)})  charge ${p.charge?.steps ?? '-'}  pending ${p.pendingKick?.kind ?? '-'}`,
       `owner ${sim.possession.owner ?? '-'}  last ${sim.possession.lastTouch ?? '-'}`,

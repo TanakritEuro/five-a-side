@@ -50,7 +50,7 @@ export class Game {
   private last = 0;
 
   static async create(canvas: HTMLCanvasElement, hudRoot: HTMLElement, options: GameOptions): Promise<Game> {
-    const sim = await Sim.create({ seed: options.seed, players: fullLineup(), ai: true });
+    const sim = await Sim.create({ seed: options.seed, players: fullLineup(), ai: true, kickoff: true });
     return new Game(canvas, hudRoot, sim, options);
   }
 
@@ -106,6 +106,7 @@ export class Game {
     // With nobody to follow, the camera follows the ball.
     this.broadcast.update(me?.position ?? view.ball.position, view.ball.position, dt);
     this.hud.update(this.controlled === null ? null : sim.players[this.controlled], dt, shotPower);
+    this.hud.setClock(sim.match.clock.half, TUNING.match.halfLength - sim.match.clock.elapsed);
     if (this.controlled !== null && me) this.debug?.update(sim, this.controlled, me.position);
 
     view.renderer.render(view.scene, view.camera);
@@ -119,18 +120,32 @@ export class Game {
     switch (e.type) {
       case 'goal':
         this.hud.setScore(e.score[0], e.score[1]);
-        this.hud.flash('GOAL!', TUNING.rules.goalDelay);
+        this.hud.flash('GOAL!', TUNING.match.goalDelay);
         break;
       case 'shot':
         // Arrives after the goal event for the same shot, so "GOAL! In off the post" wins.
-        this.hud.flash(describeOutcome(e.outcome), e.outcome.kind === 'goal' ? TUNING.rules.goalDelay : 2);
+        this.hud.flash(describeOutcome(e.outcome), e.outcome.kind === 'goal' ? TUNING.match.goalDelay : 2);
         break;
       case 'out':
-        this.hud.flash(e.restart.kind === 'kickIn' ? 'Over the netting · Kick-in' : 'Over the netting · Goal clearance', TUNING.rules.outDelay);
+        this.hud.flash(e.restart.kind === 'kickIn' ? 'Over the netting · Kick-in' : 'Over the netting · Goal clearance', TUNING.match.outDelay);
         break;
       case 'restart':
-        this.hud.flash(RESTART_NAMES[e.restart.kind], TUNING.rules.restartFreeze + 0.4);
+        this.hud.flash(RESTART_NAMES[e.restart.kind], 1.5);
+        // Your team's restart: you take it. (Proper switching arrives with HumanControl.)
+        if (this.controlled !== null && e.taker !== null && this.sim.players[e.taker].team === this.sim.players[this.controlled].team) {
+          this.controlled = e.taker;
+        }
+        break;
+      case 'halfTime':
+        this.hud.flash(`Half time · ${scoreLine(e.score)}`, TUNING.match.halfTimePause);
+        break;
+      case 'fullTime':
+        this.hud.flash(`Full time · ${scoreLine(e.score)}`, Infinity);
         break;
     }
   }
+}
+
+function scoreLine(score: [number, number]): string {
+  return `${TEAMS[0].short} ${score[0]} – ${score[1]} ${TEAMS[1].short}`;
 }

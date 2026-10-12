@@ -6,6 +6,8 @@ import { TEAMS } from '../team/teams';
 /** Heads-up display: score, a status line, the shot power meter and a stamina bar. */
 export class Hud {
   private readonly scoreboard: HTMLElement;
+  private readonly score: HTMLElement;
+  private readonly clock: HTMLElement;
   private readonly status: HTMLElement;
   private readonly meter: HTMLElement;
   private readonly meterFill: HTMLElement;
@@ -19,6 +21,8 @@ export class Hud {
   constructor(root: HTMLElement, hint: string) {
     this.hint = hint;
     this.scoreboard = el(root, 'div', 'scoreboard');
+    this.score = el(this.scoreboard, 'span', 'score');
+    this.clock = el(this.scoreboard, 'span', 'clock');
     this.status = el(root, 'div', 'status');
     const panel = el(root, 'div', 'panel');
     this.panel = panel;
@@ -37,7 +41,13 @@ export class Hud {
   }
 
   setScore(home: number, away: number): void {
-    this.scoreboard.textContent = `${TEAMS[0].short} ${home} – ${away} ${TEAMS[1].short}`;
+    this.score.textContent = `${TEAMS[0].short} ${home} – ${away} ${TEAMS[1].short}`;
+  }
+
+  /** Game time left in the half, counting down, e.g. "1H 2:41". */
+  setClock(half: 1 | 2, remaining: number): void {
+    const s = Math.max(0, Math.ceil(remaining));
+    this.clock.textContent = `${half}H ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
   /** Show `text` for `seconds`, then go back to the controls hint. */

@@ -22,11 +22,14 @@ export function cmd(partial: Partial<Command> = {}): Command {
   return { ...IDLE, move: { ...IDLE.move }, ...partial };
 }
 
-/** Step `sim` for `seconds` with commands from `drive(step)` for player 0. Returns every event. */
-export function run(sim: Sim, seconds: number, drive: (step: number) => Command = () => IDLE): SimEvent[] {
+/** Step `sim` for `seconds` with commands from `drive(step)`: one for player 0, or one per player. Returns every event. */
+export function run(sim: Sim, seconds: number, drive: (step: number) => Command | Command[] = () => IDLE): SimEvent[] {
   const events: SimEvent[] = [];
   const steps = Math.round(seconds * STEPS_PER_SECOND);
-  for (let i = 0; i < steps; i++) events.push(...sim.step([drive(i)]));
+  for (let i = 0; i < steps; i++) {
+    const c = drive(i);
+    events.push(...sim.step(Array.isArray(c) ? c : [c]));
+  }
   return events;
 }
 

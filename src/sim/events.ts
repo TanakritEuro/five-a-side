@@ -22,5 +22,9 @@ export type SimEvent =
   | { type: 'goal'; team: 0 | 1; end: GoalEnd; score: [number, number] }
   /** The ball went over the netting. */
   | { type: 'out'; restart: Restart }
-  /** The ball has been placed for a restart. */
-  | { type: 'restart'; restart: Restart };
+  /** The ball has been placed for a kick-off, kick-in or goal clearance, to be taken by `taker`. */
+  | { type: 'restart'; restart: Restart; taker: number | null }
+  /** The first half is over. */
+  | { type: 'halfTime'; score: [number, number] }
+  /** The match is over. */
+  | { type: 'fullTime'; score: [number, number] };
