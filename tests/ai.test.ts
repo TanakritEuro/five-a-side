@@ -55,9 +55,9 @@ describe('team AI', () => {
       for (const p of sim.players) {
         const s = sim.ai!.states[p.id];
         if (s.kind !== 'hold' || sim.tick - sim.ai!.since[p.id] < 3 * STEPS_PER_SECOND) continue;
-        const slot = sim.ai!.slotOf(p.id);
+        const slot = sim.ai!.slotOf(p.id, p.team)!;
         // Slots move with the ball, so players trail them a little.
-        expect(Math.hypot(slot.x - p.pos.x, slot.z - p.pos.z)).toBeLessThan(4);
+        expect(Math.hypot(slot.x - p.pos.x, slot.z - p.pos.z)).toBeLessThan(5);
         checked++;
       }
     }

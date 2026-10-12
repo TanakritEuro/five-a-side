@@ -18,8 +18,10 @@ export interface Command {
   lob: boolean;
   /** Standing tackle (K out of possession). Not used until Milestone 4. */
   tackle: boolean;
-  /** Switch player (J out of possession). Not used until Milestone 2. */
+  /** Switch player (J out of possession). */
   switch: boolean;
+  /** Call a teammate to press the ball (L out of possession). */
+  press: boolean;
 }
 
 export const IDLE: Readonly<Command> = Object.freeze({
@@ -30,4 +32,5 @@ export const IDLE: Readonly<Command> = Object.freeze({
   lob: false,
   tackle: false,
   switch: false,
+  press: false,
 });

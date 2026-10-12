@@ -3,6 +3,7 @@ import { Ai } from '../ai/ai';
 import { applyBallForces } from '../ball/forces';
 import { ShotTracker } from '../ball/outcome';
 import { Ghost } from '../ball/trajectory';
+import { TUNING } from '../config';
 import { BALL_RADIUS, PHYSICS_STEP } from '../constants';
 import { createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
 import { createPhysics, type Physics } from '../physics';
@@ -16,7 +17,7 @@ import { createPlayer, integratePlayer, syncBody, type Player, type PlayerSpec }
 import { Possession } from './possession';
 import { chooseTaker, faceNearestTeammate, holdRestartShape, placeForRestart } from './restarts';
 import type { Restart, RulesContext } from './rules';
-import { separatePlayers } from './separation';
+import { keepOffBall, separatePlayers } from './separation';
 
 export interface SimOptions {
   seed: number;
@@ -64,6 +65,11 @@ export class Sim {
   private shot: { player: number; tracker: ShotTracker } | null = null;
   /** Something was teleported this step: don't interpolate across it. */
   private teleported = false;
+  /** Ids of the players a human drove last step (the AI leaves them alone). */
+  readonly humanDriven = new Set<number>();
+  /** Per team: the tick until which a human's call for a teammate to press (L) stands. */
+  private readonly pressCallUntil = [0, 0];
+  private readonly pressHeld = [false, false];
 
   static async create(options: SimOptions): Promise<Sim> {
     return new Sim(await createPhysics(), options);
@@ -92,6 +98,29 @@ export class Sim {
     return this.match.attackDir(team);
   }
 
+  /** Has a human on `team` called for a teammate to press (L) within the last few seconds? */
+  pressCalled(team: 0 | 1): boolean {
+    return this.tick < this.pressCallUntil[team];
+  }
+
+  /** Remember who the humans drove this step, and any new call to press. */
+  private noteHumans(commands: readonly Command[]): void {
+    this.humanDriven.clear();
+    const pressing = [false, false];
+    for (const p of this.players) {
+      const cmd = commands[p.id];
+      if (!cmd) continue;
+      this.humanDriven.add(p.id);
+      if (cmd.press) pressing[p.team] = true;
+    }
+    for (const team of [0, 1] as const) {
+      if (pressing[team] && !this.pressHeld[team]) {
+        this.pressCallUntil[team] = this.tick + Math.round(TUNING.ai.pressCallTime / PHYSICS_STEP);
+      }
+      this.pressHeld[team] = pressing[team];
+    }
+  }
+
   /** Put the ball down at rest on the ground at `at`. */
   placeBall(at: Vec2): void {
     this.ball.setTranslation({ x: at.x, y: BALL_RADIUS, z: at.z }, true);
@@ -115,6 +144,7 @@ export class Sim {
     // Nobody moves during the half-time break or after full time.
     const stopped = match.phase.kind === 'halfTime' || match.over;
     const resolved = this.players.map((p) => (stopped ? IDLE : (commands[p.id] ?? this.ai?.command(this, p) ?? IDLE)));
+    this.noteHumans(commands);
 
     for (const p of this.players) {
       const cmd = resolved[p.id];
@@ -125,6 +155,7 @@ export class Sim {
       p.touchCooldown = Math.max(0, p.touchCooldown - dt);
     }
     separatePlayers(this.players);
+    keepOffBall(this.players, this.ball.translation(), this.ball.linvel());
     if (match.phase.kind === 'restart') {
       const b = this.ball.translation();
       holdRestartShape(this.players, match.phase.restart, match.taker, { x: b.x, z: b.z }, (t) => this.attackDir(t));

@@ -174,6 +174,8 @@ export const TUNING = {
     arriveRadius: 2.5,
     /** Sprint to a target further than this (m). */
     sprintDistance: 9,
+    /** Seconds a human's call for a teammate to press (L) lasts. */
+    pressCallTime: 3,
     /** Teammates within this distance (m) push each other apart when moving to spots. */
     separationRadius: 2.5,
     /** Close enough to a slot (m) to stand still. */
@@ -202,14 +204,25 @@ export const TUNING = {
     keeperHold: 0.6,
     /** ...or clear it upfield if nobody is open after this long (s). */
     keeperClear: 2.5,
-    /** The defender blocking the carrier stands this far (m) goal-side of the ball. */
-    blockDistance: 1.3,
+    /** Defending: the presser closes to this far (m) goal-side of the ball, the cover sits this far back... */
+    pressDistance: 0.8,
+    coverDistance: 4,
+    /** ...markers stay this far (m) goal-side of their man, up to this much (m) towards the ball... */
+    markDistance: 1.2,
+    markBallSide: 0.6,
+    /** ...and leave anyone further up the other end than this (fraction of the half-length) to the formation. */
+    markZone: 0.3,
+    /** Seconds after a turnover that everyone hurries (sprints) to their new job. */
+    transitionTime: 1,
     /** The team brain re-plans every this many steps. */
     brainInterval: 6,
   },
   separation: {
     /** Minimum gap (m) kept between two players' capsules. */
     gap: 0.05,
+    /** Players keep their bodies off a ball moving slower than this (m/s) and lower than this (m). */
+    ballClearSpeed: 1,
+    ballClearHeight: 1,
   },
   outcome: {
     /** Give up waiting and call a shot a miss after this many seconds of flight. */

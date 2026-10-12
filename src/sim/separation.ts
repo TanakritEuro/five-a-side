@@ -1,6 +1,6 @@
 import { TUNING } from '../config';
-import { HALF_LENGTH, HALF_WIDTH, PLAYER_RADIUS } from '../constants';
-import { clamp } from '../math';
+import { BALL_RADIUS, HALF_LENGTH, HALF_WIDTH, PLAYER_RADIUS } from '../constants';
+import { clamp, type Vec3 } from '../math';
 import type { Player } from './player';
 
 /**
@@ -41,5 +41,30 @@ export function separatePlayers(players: readonly Player[]): void {
       }
     }
     if (!moved) return;
+  }
+}
+
+/**
+ * Keep players' bodies just off a slow ball. Two players running at a resting ball
+ * otherwise squeeze it between their capsules (and the boards), lifting it out of reach
+ * of their feet so nobody can play it. A moving ball still bounces off bodies as usual:
+ * that's how blocks and deflections happen.
+ */
+export function keepOffBall(players: readonly Player[], ball: Vec3, ballVel: Vec3): void {
+  const S = TUNING.separation;
+  if (ball.y > S.ballClearHeight || Math.hypot(ballVel.x, ballVel.z) > S.ballClearSpeed) return;
+  const min = PLAYER_RADIUS + BALL_RADIUS + TUNING.separation.gap;
+  const maxX = HALF_LENGTH - PLAYER_RADIUS;
+  const maxZ = HALF_WIDTH - PLAYER_RADIUS;
+  for (const p of players) {
+    const dx = p.pos.x - ball.x;
+    const dz = p.pos.z - ball.z;
+    const d = Math.hypot(dx, dz);
+    if (d >= min) continue;
+    // Dead on top of it: step back along their facing.
+    const ux = d > 1e-6 ? dx / d : -Math.cos(p.facing);
+    const uz = d > 1e-6 ? dz / d : -Math.sin(p.facing);
+    p.pos.x = clamp(ball.x + ux * min, -maxX, maxX);
+    p.pos.z = clamp(ball.z + uz * min, -maxZ, maxZ);
   }
 }

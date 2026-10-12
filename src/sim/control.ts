@@ -9,9 +9,9 @@ import type { Sim } from './sim';
  * Which player a human drives, and what their buttons mean. One per human team.
  *
  * The keyboard sets both meanings of each context button (J = pass and switch, K = shoot
- * and tackle); `command` picks the one that applies. J passes when the controlled player
- * has the ball or it's right by them (so a first-time pass works), and otherwise switches
- * to the teammate best placed to get to the ball.
+ * and tackle, L = lob and call a teammate to press); `command` picks the one that applies.
+ * J passes when the controlled player has the ball or it's right by them (so a first-time
+ * pass works), and otherwise switches to the teammate best placed to get to the ball.
  *
  * After each step `afterStep` switches automatically: to the receiver of your pass, to a
  * teammate who wins the ball, to the best-placed player when the other team wins it, and
@@ -38,6 +38,7 @@ export class HumanControl {
     const owner = sim.possession.owner;
     // Their ball, or a loose one right by them (a first-time pass): J and K kick it.
     const onBall = owner === p.id || (owner === null && nearBall(sim, p));
+    const defending = owner !== null && sim.players[owner].team !== this.team;
     const pressed = raw.switch && !this.heldSwitch;
     this.heldSwitch = raw.switch;
     if (pressed && !onBall) {
@@ -49,6 +50,10 @@ export class HumanControl {
       ...raw,
       pass: raw.pass && !this.swallowPass && onBall,
       switch: false,
+      // L calls a teammate to press when the other team has the ball; otherwise it's the
+      // lob (a later milestone).
+      press: raw.press && defending,
+      lob: raw.lob && !defending,
       // Tackles arrive in Milestone 4; until then K only ever shoots.
       tackle: false,
     };
