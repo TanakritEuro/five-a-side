@@ -6,8 +6,10 @@ import { createRng, type Quat, type Rng, type Vec2, type Vec3 } from '../math';
 import { createPhysics, type Physics } from '../physics';
 import { IDLE, type Command } from './command';
 import type { SimEvent } from './events';
+import { dribbleMove, playBall } from './dribble';
 import { stepLocomotion } from './locomotion';
 import { createPlayer, integratePlayer, type Player, type PlayerSpec } from './player';
+import { Possession } from './possession';
 
 export interface SimOptions {
   seed: number;
@@ -38,6 +40,7 @@ export class Sim {
   /** Ghost-ball worlds for predicting kicks. */
   readonly ghost = new Ghost();
   readonly players: Player[];
+  readonly possession = new Possession();
   /** Steps taken so far. */
   tick = 0;
   /** State after the previous step and after the latest one: render between the two. */
@@ -75,17 +78,31 @@ export class Sim {
     copySnapshot(this.curr, this.prev);
     const events: SimEvent[] = [];
     const dt = PHYSICS_STEP;
+    const { world, events: queue } = this.physics;
 
+    this.possession.update(this.players, this.ball.translation());
     for (const p of this.players) {
       const cmd = commands[p.id] ?? IDLE;
-      stepLocomotion(p, { move: cmd.move, sprint: cmd.sprint, onBall: false, pace: p.attrs.pace }, dt);
+      const onBall = this.possession.owner === p.id;
+      const move = dribbleMove(p, cmd.move, this.ball, this.possession);
+      stepLocomotion(p, { move, sprint: cmd.sprint, onBall, pace: p.attrs.pace }, dt);
       integratePlayer(p, dt);
+      p.touchCooldown = Math.max(0, p.touchCooldown - dt);
+    }
+    for (const p of this.players) {
+      const touch = playBall(p, this.ball, this.possession, (commands[p.id] ?? IDLE).move, this.rng, dt);
+      if (touch) events.push(touch);
     }
 
-    const { world, events: queue } = this.physics;
     applyBallForces(this.ball);
     world.step(queue);
-    queue.drainCollisionEvents(() => {});
+    queue.drainCollisionEvents((h1, h2, started) => {
+      if (!started) return;
+      const id = this.physics.playerColliders.get(h1) ?? this.physics.playerColliders.get(h2);
+      if (id === undefined || id === this.possession.owner) return;
+      this.possession.deflect(id);
+      events.push({ type: 'touch', player: id, kind: 'deflect' });
+    });
 
     this.tick++;
     this.writeSnapshot(this.curr);
