@@ -1,6 +1,10 @@
 import { TUNING } from '../config';
-import { chargePower } from '../sim/kick';
-import type { Player } from '../sim/player';
+
+/** What the HUD shows about the player you control: their stamina, and a shot's charge (0 when not charging). */
+export interface HudPlayer {
+  stamina: number;
+  charge: number;
+}
 
 /** Heads-up display: score, a status line, the shot power meter and a stamina bar. */
 export class Hud {
@@ -84,7 +88,7 @@ export class Hud {
    * Call once per frame with the controlled player (null when nobody is controlled).
    * `shotPower` is set on the frame a shot is struck.
    */
-  update(p: Player | null, dt: number, shotPower: number | null): void {
+  update(p: HudPlayer | null, dt: number, shotPower: number | null): void {
     if (this.statusUntil && performance.now() > this.statusUntil) {
       this.statusUntil = 0;
       this.status.textContent = this.hint;
@@ -92,13 +96,13 @@ export class Hud {
 
     this.panel.classList.toggle('hidden', p === null);
     if (!p) return;
-    const charging = p.charge?.kind === 'shoot';
+    const charging = p.charge > 0;
     if (shotPower !== null) {
       this.meterHold = 0.8;
       this.setMeter(shotPower);
     } else if (charging) {
       this.meterHold = 0;
-      this.setMeter(chargePower(p));
+      this.setMeter(p.charge);
     } else {
       this.meterHold = Math.max(0, this.meterHold - dt);
     }

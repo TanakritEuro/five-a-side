@@ -19,8 +19,9 @@ export interface ReplayFrame {
 export class Replay {
   private clips: Clip[] = [];
   private index = 0;
-  /** Seconds into the current clip. */
+  /** Seconds into the current clip, and the frame it's at or past. */
   private time = 0;
+  private frame = 0;
   private speed = 1;
   private fresh = false;
 
@@ -40,6 +41,7 @@ export class Replay {
     this.clips = clips.filter((c) => c.frames.length >= 2);
     this.index = 0;
     this.time = 0;
+    this.frame = 0;
     this.speed = speed;
     this.fresh = true;
   }
@@ -58,18 +60,26 @@ export class Replay {
     if (!this.active) return null;
     this.time += realDt * this.speed;
     let clip = this.clips[this.index];
-    const length = (clip.frames.length - 1) * PHYSICS_STEP;
+    const first = clip.frames[0].tick;
+    const length = (clip.frames[clip.frames.length - 1].tick - first) * PHYSICS_STEP;
     if (this.time > length + 0.5) {
       this.index++;
       this.time = 0;
+      this.frame = 0;
       this.fresh = true;
       if (!this.active) return null;
       clip = this.clips[this.index];
     }
-    const t = Math.min(this.time, (clip.frames.length - 1) * PHYSICS_STEP) / PHYSICS_STEP;
-    const i = Math.min(Math.floor(t), clip.frames.length - 2);
+    // The tick being shown, and the two snapshots either side of it (they may be a step or
+    // two apart).
+    const frames = clip.frames;
+    const tick = frames[0].tick + Math.min(this.time, length) / PHYSICS_STEP;
+    while (this.frame < frames.length - 2 && frames[this.frame + 1].tick <= tick) this.frame++;
+    const prev = frames[this.frame];
+    const curr = frames[this.frame + 1];
+    const span = curr.tick - prev.tick;
     const fresh = this.fresh;
     this.fresh = false;
-    return { prev: clip.frames[i], curr: clip.frames[i + 1], alpha: Math.min(1, t - i), clip, fresh };
+    return { prev, curr, alpha: span > 0 ? Math.min(1, Math.max(0, (tick - prev.tick) / span)) : 1, clip, fresh };
   }
 }

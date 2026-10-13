@@ -13,7 +13,16 @@ export interface MenuEvents {
   onQuit: () => void;
   onSound: (muted: boolean) => void;
   onResetStats: () => void;
+  /** Online: open a room for an opponent to join, as `team`, with halves of `halfLength`. */
+  onHost: (team: Team, halfLength: number) => void;
+  /** Online: join the room with this code, as `team`. */
+  onJoin: (code: string, team: Team) => void;
+  /** Online: stop waiting or connecting. */
+  onCancelOnline: () => void;
 }
+
+/** Where the online row is up to. */
+export type OnlineState = { kind: 'idle'; message?: string } | { kind: 'hosting'; code: string } | { kind: 'joining' };
 
 const MODES: readonly { mode: Mode; label: string; help: string }[] = [
   { mode: 'friendly', label: 'Friendly', help: 'One match against the team and level you choose.' },
@@ -44,6 +53,9 @@ export class Menu {
   private muted: boolean;
   private readonly refresh: (() => void)[] = [];
   private readonly statsLine: HTMLElement;
+  private readonly message: HTMLElement;
+  private online: OnlineState = { kind: 'idle' };
+  private readonly restart: HTMLButtonElement;
 
   constructor(parent: HTMLElement, private readonly events: MenuEvents, muted: boolean) {
     this.muted = muted;
@@ -83,6 +95,40 @@ export class Menu {
     go.addEventListener('click', () =>
       this.events.onPlay({ mode: this.mode, team: this.team, opponent: this.opponent, level: this.level, halfLength: this.halfLength }),
     );
+    // Online: host a room (its code to share) or join one, as the team picked above.
+    const onlineRow = this.row(this.start, 'Online');
+    const host = button(onlineRow, 'Host');
+    host.addEventListener('click', () => this.events.onHost(this.team, this.halfLength));
+    const code = document.createElement('input');
+    code.className = 'menu-code';
+    code.placeholder = 'CODE';
+    code.maxLength = 4;
+    code.autocomplete = 'off';
+    onlineRow.appendChild(code);
+    const join = button(onlineRow, 'Join');
+    join.addEventListener('click', () => this.events.onJoin(code.value, this.team));
+    code.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // typing a code isn't playing
+      if (e.key === 'Enter') this.events.onJoin(code.value, this.team);
+    });
+    const cancel = button(onlineRow, 'Cancel');
+    cancel.addEventListener('click', () => this.events.onCancelOnline());
+    const onlineStatus = div(this.start, 'menu-help');
+    this.refresh.push(() => {
+      const o = this.online;
+      const busy = o.kind !== 'idle';
+      host.disabled = busy;
+      join.disabled = busy;
+      code.disabled = busy;
+      go.disabled = busy;
+      cancel.classList.toggle('hidden', !busy);
+      onlineStatus.textContent =
+        o.kind === 'hosting'
+          ? `Room ${o.code}: give your opponent this code. Waiting for them to join…`
+          : o.kind === 'joining'
+            ? 'Joining…'
+            : (o.message ?? 'Host a room and share its code, or join a friend\'s with theirs. You play the team picked above.');
+    });
     const extras = div(this.start, 'menu-row');
     const sound = button(extras, '');
     this.refresh.push(() => (sound.textContent = this.muted ? 'Sound: off' : 'Sound: on'));
@@ -94,12 +140,14 @@ export class Menu {
     const reset = button(extras, 'Reset stats');
     reset.addEventListener('click', () => this.events.onResetStats());
     this.statsLine = div(this.start, 'menu-stats');
+    this.message = div(this.start, 'fulltime-message hidden');
     div(this.start, 'menu-help', CONTROLS);
 
     div(this.pause, 'menu-title', 'Paused');
     const pauseRow = div(this.pause, 'menu-row');
     button(pauseRow, 'Resume', 'menu-go').addEventListener('click', () => this.events.onResume());
-    button(pauseRow, 'Restart match').addEventListener('click', () => this.events.onRestart());
+    this.restart = button(pauseRow, 'Restart match');
+    this.restart.addEventListener('click', () => this.events.onRestart());
     button(pauseRow, 'Quit to menu').addEventListener('click', () => this.events.onQuit());
     div(this.pause, 'menu-help', CONTROLS);
     this.update();
@@ -109,14 +157,23 @@ export class Menu {
     return !this.root.classList.contains('hidden');
   }
 
-  /** The start menu, with your record. */
-  showStart(stats: string): void {
+  /** The start menu, with your record, and a message if something needs saying (a dropped online match). */
+  showStart(stats: string, message = ''): void {
     this.statsLine.textContent = stats;
+    this.message.textContent = message;
+    this.message.classList.toggle('hidden', message === '');
     this.show(this.start);
   }
 
-  showPause(): void {
+  /** The pause menu; an online match can't be restarted. */
+  showPause(online = false): void {
+    this.restart.classList.toggle('hidden', online);
     this.show(this.pause);
+  }
+
+  setOnline(state: OnlineState): void {
+    this.online = state;
+    this.update();
   }
 
   hide(): void {
