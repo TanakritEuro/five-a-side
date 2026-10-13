@@ -4,7 +4,10 @@ Goal: two people on two devices play each other, one team each, over the interne
 from `../penalty-shootout/src/online/`: rooms with a four-letter code over PeerJS, and the
 host runs the match. The guest sends its inputs and draws what the host sends.
 
-## Scope decisions (to confirm)
+## Scope decisions
+
+Decided with you: host-authoritative with no prediction; draws stand; a separate online
+record; the public PeerJS server.
 
 - **Host-authoritative, no prediction.** The host's simulation is the only one; the
   guest's keys reach it a network trip later. The guest sees everything about 100–200 ms
@@ -80,7 +83,7 @@ picked above. A connecting state, then a cancel button. Errors are explained.
 
 | File | Contents |
 | --- | --- |
-| `package.json` | \`peerjs\` (as in the penalty game) |
+| `package.json` | `peerjs` (as in the penalty game) |
 | `src/online/link.ts` | Ported (prefix and messages changed) |
 | `src/online/protocol.ts` | Messages and their validation |
 | `src/online/snapshots.ts` | Packing and unpacking snapshots |
