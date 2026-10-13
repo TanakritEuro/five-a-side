@@ -1,5 +1,45 @@
 # Milestone 6 plan: presentation and polish
 
+## Status: done
+
+Decided with you before starting: automatic goal replays plus R; a cup (no league);
+shootouts of three kicks each, then sudden death; gamepad and touch controls.
+
+Numbers: shootout kicks by the AI go in about 73% of the time. A normal AI v AI match
+averages about 6.2 goals and 3.2 fouls over 40 seeds; the soak tests are unchanged and
+pass. (The 4.4 goals in the M4 notes came from seeds 1–16, which run low: on seeds
+17–40 the end of M4 averages 6.2 too. M5's celebrations change how each match goes
+after its first goal, because the AI draws its random numbers differently during the
+pause, but on fresh seeds the goal rate is the same before and after that commit.)
+
+Where the build differs from the plan below:
+
+- **The broadcast camera is closer and tighter** (field of view 34°, 13 m up, 24 m back).
+  It works out from the window's shape how far to pan, so the end wall reaches the edge
+  of the picture. That fixes the camera stopping short at the ends (deferred from M2).
+  A tall, narrow window (a phone held upright) gets a wider view.
+- **Replay cameras:** behind the goal for goals through the middle, and the reverse angle
+  from the far touchline for the rest. A low camera by the near boards was blocked by
+  the players running along them.
+- **The goal cut** goes to a camera in the near corner looking across the goal. One in
+  front of it was blocked by players.
+- **The nets ripple from the ball as drawn,** not from contact events, so replays ripple
+  too. The first version measured the ball's speed after overwriting the last position,
+  so it never rippled; a test caught it.
+- **Sound starts on the first key press or click** (browsers need one), not only from
+  the menu. The AI match behind the menu is silent and has no replays.
+- **Full time:** the goals' highlights play first, then the full-time screen.
+- **In a shootout both teams kick at the +X goal.** The other players wait on the halfway
+  line, and a kick ends on the ball's own movement, so there are no rebounds.
+- **You're always the home team.** In the cup the human's team is home in every round.
+- **Not done:**
+  - gamepad navigation of the menus beyond A pressing the main button;
+  - a league;
+  - player names;
+  - keepers celebrating.
+
+  Touch play suits a phone held sideways; upright it's a narrow strip of pitch.
+
 Goal: it feels like a game, not a test bench. The game gets:
 
 - a camera director (a broadcast view that reaches both ends, a closer action camera,

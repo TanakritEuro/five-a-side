@@ -25,11 +25,16 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1–5 done (plans and notes in `docs/milestone-1.md` … `docs/milestone-5.md`).
-A full five-a-side match against a team AI: ten players, the human on the home team
-(`?aivsai` to watch two AI teams, `?difficulty=easy|normal|hard` for the opposition).
-There is a kick-off, a clock that stops when the ball is dead, two 3-minute halves with
-the ends swapped, and full time. Kick-ins and goal clearances have a taker.
+Milestones 1–6 done (plans and notes in `docs/milestone-1.md` … `docs/milestone-6.md`).
+A five-a-side game against a team AI. It opens on a start menu, with an AI match
+playing behind it. You play a friendly (any two of eight invented teams, any level,
+2/3/5-minute halves) or a cup run: three knockout rounds, easy then normal then hard, with
+draws going to a shootout. You're always the home team. The URL flags skip the menu:
+`?aivsai` (watch two AI teams), `?difficulty=easy|normal|hard`, `?seed=`.
+
+A match has a kick-off, a clock that stops when the ball is dead, two halves with the ends
+swapped, and full time. Then come the goals' highlights and a full-time screen with match
+stats. Kick-ins and goal clearances have a taker. Esc pauses.
 
 - **Passing and switching:** J passes to the best teammate in a cone (leading a runner)
   or, without the ball, switches player; switching is also automatic. L calls a teammate
@@ -54,10 +59,19 @@ the ends swapped, and full time. Kick-ins and goal clearances have a taker.
   the jog clip in step. Kicks, passes, traps, tackles, challenges and keeper throws are
   timed to the simulation. After a goal the scorers celebrate and the other team puts
   their hands on their heads. Keepers follow the dive pose.
+- **Presentation** (M6):
+  - A camera director (`camera/director.ts`): the broadcast view pans to the end walls;
+    C gives an action camera; goals cut to the net, then the scorer; the woodwork shakes.
+  - Goal replays play automatically; R replays the last few seconds; the highlights
+    play at full time (`replay/`).
+  - Nets ripple and hard shots leave a trail.
+  - Synthesised crowd and sound effects (`audio/`); M mutes.
+  - Gamepad and touch controls.
+  - Lifetime stats are kept in localStorage.
 
-AI vs AI at normal averages about 4.5 goals, 30 tackles (55–60% won) and 2–3 fouls a
-match; hard beats normal beats easy (the soak and difficulty tests hold these). `npm run
-stats` prints match statistics for tuning. Milestone 6 (presentation and polish) is next.
+AI vs AI at normal averages about 6 goals, 35 tackles (55–60% won) and 3 fouls a match
+(40 seeds; 16 seeds is too few to judge a change by); hard beats normal beats easy (the soak and difficulty tests hold these). `npm run
+stats` prints match statistics for tuning. Milestone 7 (online, optional) is next.
 
 Things that aren't obvious from the code:
 - Rapier clamps angular velocity to a quarter turn per step (47 rad/s at 60 Hz). The ball
@@ -107,9 +121,25 @@ Things that aren't obvious from the code:
 - Mulberry32's first number from small neighbouring seeds (1, 2, 3…) is far from uniform.
   A test whose outcome hangs on the sim's first roll (a tackle in a fresh sim, say) spreads
   its seeds out (`seed * 104729`), or the statistics come out skewed.
-- With `?debug` the game is on `window.game`; `game.sim.match.foul({ kind: 'penalty', … })`
-  sets up a set piece to look at. The page doesn't advance while a Chrome
-  `javascript_tool` call is awaiting, so take screenshots between calls instead.
+- With `?debug` the game is on `window.game`:
+  - `game.sim` is the match being shown, and `game.run` holds its figures, recorder and
+    stats;
+  - `game.sim.match.foul({ kind: 'penalty', … })` sets up a set piece to look at.
+
+  The page doesn't advance while a Chrome `javascript_tool` call is awaiting, so take
+  screenshots between calls. Driving `game.sim.step` by hand skips the game's recording
+  and event handling: call `game.recordStep(game.run, events)` and
+  `game.onEvent(game.run, e)` too, or there's nothing to replay.
+- Replays never re-run the simulation. They draw recorded snapshots through the same
+  `interpolate` and figures as live play, with the figures' animators reset at each cut.
+  So anything a replay must show has to be in `Snapshot`.
+- In a shootout both teams kick at the +X goal: `Match.attackDir` answers for the kicking
+  team while a kick is set up or taken. A kick ends when the ball goes in, stops heading
+  for goal, leaves the cage or times out, so rebounds never happen.
+- `src/style.css` is linked from `index.html`, and Vite doesn't reliably hot-reload it:
+  reload the page after CSS changes before judging them.
+- Chrome's automated clicks don't fire pointer events, so audio also unlocks on `click`
+  (browsers need a gesture before audio plays).
 
 ## The game
 
@@ -121,12 +151,13 @@ Things that aren't obvious from the code:
   Only the keeper may handle, and only inside their own goal area.
 - **Teams:** keeper plus four outfield players in a diamond (defender, left, right,
   pivot). Invented teams only (`team/teams.ts`).
-- **Rules:** no offside. Kick-off at the start of each half and after each goal. Fouls
-  and free kicks are a later milestone; until then tackles that miss the ball just fail.
-- **Match length:** two halves of a few minutes of game time each (tunable), ends swap
-  at half time. A draw in a cup match goes to penalties (port the shootout).
+- **Rules:** no offside. Kick-off at the start of each half and after each goal. A foul
+  gives a direct free kick, or a penalty in the defending goal area.
+- **Match length:** two halves of a few minutes of game time each (2, 3 or 5 in the
+  menu), ends swap at half time. A draw in a cup tie goes to a shootout: three kicks
+  each, then sudden death.
 
-### Controls (keyboard; gamepad later via the Gamepad API)
+### Controls (keyboard, gamepad, touch)
 
 | Key | In possession | Defending |
 | --- | --- | --- |
@@ -137,7 +168,12 @@ Things that aren't obvious from the code:
 | L | lofted pass / chip (hold for power) | call a teammate to press |
 
 The controlled player has a marker under them. Auto-switch to the player best placed to
-reach the ball when possession changes or a pass is played to a teammate.
+reach the ball when possession changes or a pass is played to a teammate. Also: Esc
+pauses, C switches camera, R replays, M mutes.
+
+Gamepad (standard mapping): left stick, RT/RB sprint, A = J, B = K, X = L, Start pauses,
+Y replays. Touch: a floating stick under the left thumb, with Pass, Shoot and Sprint
+buttons on the right.
 
 ## Architecture
 
@@ -229,7 +265,14 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/sim/handling.ts` — keepers catching, holding and distributing.
 - `src/team/formation.ts` — formation slots in the team's own frame and their world positions.
 - `src/team/teams.ts`, `lineup.ts` — invented teams and kits; who's on the pitch.
-- `src/game.ts` — `Game`: keyboard → `Sim` → interpolated render, HUD and camera.
+- `src/game.ts` — `Game`: menus and the session; each match's input → `Sim` → interpolated render, replays, sound, HUD.
+- `src/match/session.ts`, `stats.ts`, `matchstats.ts` — friendly or cup run; lifetime record; one match's numbers.
+- `src/replay/recorder.ts`, `replay.ts` — recent snapshots and goal clips; playback.
+- `src/audio/sound.ts`, `cues.ts` — synthesised sound (ported); which events make which sounds.
+- `src/net.ts`, `src/trail.ts` — rippling nets and the ball trail (ported).
+- `src/input/gamepad.ts`, `src/ui/touch.ts` — gamepad and on-screen touch controls.
+- `src/ui/menu.ts`, `fulltime.ts` — start and pause menus; the full-time screen.
+- `src/sim/shootout.ts` — a shootout's turns and when it's decided.
 - `src/input/keyboard.ts` — keys to `Command`s (screen-relative movement).
 - `src/render/interpolate.ts` — each player's view between the last two steps (`PlayerView`), and the ball.
 - `src/characters/rig.ts`, `skinned.ts` — the procedural rig (ported) and the Mannequin it drives; the kit shader.
@@ -237,11 +280,11 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/characters/footballer.ts` — a footballer or keeper figure in kit, placed and posed each frame.
 - `src/ui/hud.ts`, `src/debug.ts` — score, status, power meter, stamina; `?debug` / `?stats` overlays.
 - `src/scene.ts` — renderer, lights, pitch, markings, walls, goals, the controlled-player marker.
-- `src/camera.ts` — broadcast camera that follows the controlled player and the ball.
+- `src/camera/director.ts` — broadcast and action cameras, goal cuts, replay cameras, shake.
 - `src/main.ts` — entry point; reads the URL flags.
 - `tests/` — Vitest. `helpers.ts` has a sim factory, command helpers and a random driver. `tests/stats/` is `npm run stats`.
 
-As the game grows, add `src/audio/`, `src/replay/` and the menus, as in the penalty game.
+Online play (M7) would add `src/online/`, as in the penalty game.
 
 ## Conventions
 
@@ -291,10 +334,10 @@ code to this game's axes (goal lines on X, not Z) and keep the sim/presentation 
 | Done | Goal / woodwork outcome from contact events | `src/shooting/outcome.ts` |
 | Done | Keeper body, dive decision, reach limit | `src/keeper/` |
 | Done | Humanoid rig, Quaternius Mannequin driver, model build script | `src/characters/rig.ts`, `skinned.ts`, `scripts/prepare-models.mjs`, `public/models/` |
-| M6 | Net ripple, ball trail | `src/net.ts`, `src/trail.ts` |
-| M6 | Synthesised crowd and sound effects | `src/audio/sound.ts` |
-| M6 | Recorder and replays, camera director | `src/replay/`, `src/camera/director.ts` |
-| M6 | Menus, stats, sessions, penalties for drawn cup ties | `src/ui/`, `src/match/` |
+| Done | Net ripple, ball trail | `src/net.ts`, `src/trail.ts` |
+| Done | Synthesised crowd and sound effects | `src/audio/sound.ts` |
+| Done (rebuilt on snapshots) | Recorder and replays, camera director | `src/replay/`, `src/camera/director.ts` |
+| Done (rebuilt) | Menus, stats, sessions, penalties for drawn cup ties | `src/ui/`, `src/match/` |
 | M7 | Online play (PeerJS, host-authoritative) | `src/online/` |
 
 When porting an asset, copy its row in `ASSETS.md` too.
