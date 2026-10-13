@@ -5,11 +5,13 @@ import { TUNING, type LevelName } from './config';
 import { PHYSICS_STEP } from './constants';
 import { DebugOverlay, StatsOverlay } from './debug';
 import { Keyboard } from './input/keyboard';
+import { Gamepads, mergeCommands, type PadUi } from './input/gamepad';
+import { isTouchDevice, TouchControls } from './ui/touch';
 import { Footballer, KeeperFigure, kitFor, type Figure } from './characters/footballer';
 import { loadFigure, type FigureTemplate } from './characters/skinned';
 import { interpolate, type PlayerView } from './render/interpolate';
 import { createMarker, createScene, type GameScene } from './scene';
-import type { Command } from './sim/command';
+import { IDLE, type Command } from './sim/command';
 import type { SimEvent } from './sim/events';
 import type { TackleOutcome } from './sim/tackle';
 import type { RestartKind } from './sim/rules';
@@ -93,6 +95,10 @@ export class Game {
   private readonly view: GameScene;
   private readonly director: Director;
   private readonly keyboard = new Keyboard();
+  private readonly gamepads = new Gamepads();
+  /** This frame's gamepad command (read once a frame). */
+  private padCommand: Command = IDLE;
+  private readonly touch: TouchControls | null;
   private readonly hud: Hud;
   private readonly menu: Menu;
   private readonly fullTime: FullTimeScreen;
@@ -138,7 +144,10 @@ export class Game {
   ) {
     this.view = createScene(canvas);
     this.director = new Director(this.view.camera);
-    this.hud = new Hud(hudRoot, HINT, [TEAMS[0].short, TEAMS[1].short]);
+    // On a touch screen the on-screen buttons say what they do; the keyboard hint would only get in the way.
+    const touch = isTouchDevice();
+    if (touch) document.body.classList.add('touch-device');
+    this.hud = new Hud(hudRoot, touch ? '' : HINT, [TEAMS[0].short, TEAMS[1].short]);
     this.menu = new Menu(document.body, {
       onPlay: (choice) => {
         this.session = new Session({ ...choice, seed: Math.floor(Math.random() * 1e9) });
@@ -156,6 +165,7 @@ export class Game {
       },
     }, this.sound.isMuted);
     this.fullTime = new FullTimeScreen(document.body, () => this.afterFullTime(), () => void this.toMenu());
+    this.touch = touch ? new TouchControls(document.body, () => this.pauseGame()) : null;
     this.view.scene.add(this.nets.object, this.trail.object);
     this.marker = createMarker();
     this.view.scene.add(this.marker);
@@ -267,6 +277,7 @@ export class Game {
   }
 
   private pauseGame(): void {
+    if (this.state !== 'playing') return;
     this.state = 'paused';
     this.menu.showPause();
   }
@@ -283,6 +294,10 @@ export class Game {
     // from before the last frame shouldn't run time backwards.
     const dt = Math.min(Math.max((now - this.last) / 1000, 0), 0.25);
     this.last = now;
+    const pad = this.gamepads.poll();
+    this.padCommand = pad.command;
+    this.padUi(pad.ui);
+    this.touch?.setVisible(this.state === 'playing' && this.run?.control != null);
     const run = this.run;
     if (run) {
       if (this.replay.active) this.replayFrame(run, this.state === 'paused' ? 0 : dt);
@@ -296,11 +311,29 @@ export class Game {
     requestAnimationFrame((t) => this.frame(t));
   }
 
+  /**
+   * The gamepad's game buttons: Start pauses and resumes, Y replays (or skips one), and A
+   * presses the main button of whatever menu is open.
+   */
+  private padUi(ui: PadUi): void {
+    if (ui.pause) {
+      if (this.state === 'playing') this.pauseGame();
+      else if (this.state === 'paused') this.resume();
+    }
+    if (ui.replay && this.state === 'playing') {
+      if (this.replay.active) this.endReplay();
+      else this.replayNow();
+    }
+    if (ui.confirm && this.state !== 'playing') {
+      document.querySelector<HTMLButtonElement>('.menu-root:not(.hidden) .menu:not(.hidden) .menu-go')?.click();
+    }
+  }
+
   /** A frame of the match itself: step the simulation, draw between its last two steps. */
   private liveFrame(run: MatchRun, dt: number): void {
     const { sim, control } = run;
     this.accumulator += dt * this.options.timescale;
-    const raw = this.keyboard.command();
+    const raw = mergeCommands(mergeCommands(this.keyboard.command(), this.touch?.command() ?? IDLE), this.padCommand);
     let shotPower: number | null = null;
     let stepped = false;
     while (this.accumulator >= PHYSICS_STEP) {
@@ -317,7 +350,10 @@ export class Game {
       stepped = true;
     }
     // Taps that a step has now seen can be forgotten; on a frame with no step, keep them.
-    if (stepped) this.keyboard.clearTaps();
+    if (stepped) {
+      this.keyboard.clearTaps();
+      this.touch?.clearTaps();
+    }
 
     const { view } = this;
     const controlled = control?.controlled ?? null;

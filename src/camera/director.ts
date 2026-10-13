@@ -90,11 +90,13 @@ export class Director {
     const focus = f.player ? lerp(f.player.x, f.ball.x, C.ballWeight) : f.ball.x;
     // Pan with the play until the end wall reaches the edge of the picture: how far that
     // is depends on how much of the pitch the window shows across.
+    // A tall, narrow window (a phone held upright) gets a wider view, or it shows a sliver.
+    const fov = C.fov * Math.min(C.narrowZoom, Math.max(1, C.narrowAspect / this.camera.aspect));
     const depth = Math.hypot(C.height, C.distance);
-    const halfView = Math.tan(THREE.MathUtils.degToRad(C.fov / 2)) * depth * this.camera.aspect;
+    const halfView = Math.tan(THREE.MathUtils.degToRad(fov / 2)) * depth * this.camera.aspect;
     const limit = Math.max(0, HALF_LENGTH + C.endMargin - halfView);
     const x = Math.max(-limit, Math.min(limit, focus));
-    this.follow(C.fov, x, C.height, C.distance, x, 0, 0, dt, C.lag);
+    this.follow(fov, x, C.height, C.distance, x, 0, 0, dt, C.lag);
   }
 
   private action(f: Framing, dt: number): void {

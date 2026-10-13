@@ -527,6 +527,9 @@ export const TUNING = {
     fov: 34,
     /** Weight of the ball (vs the controlled player) in the point the camera follows. */
     ballWeight: 0.5,
+    /** Narrower than this aspect (width / height), the view widens, by up to `narrowZoom` times. */
+    narrowAspect: 1.2,
+    narrowZoom: 1.9,
     /** The camera pans until this far (m) beyond each end wall reaches the edge of the picture. */
     endMargin: 2,
     /** Smoothing: fraction of the remaining gap closed per second (higher = snappier). */
