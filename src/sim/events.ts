@@ -17,6 +17,8 @@ export type SimEvent =
   | { type: 'kick'; player: number; kind: KickKind; power: number; target: Vec3; atGoal: boolean; receiver: number | null; path: BallPath }
   /** A tackle met (or missed) the ball: `carrier` is who had it, if anyone. */
   | { type: 'tackle'; player: number; carrier: number | null; outcome: TackleOutcome }
+  /** A shoulder challenge began: `challenger` came into contact with the ball `carrier`. */
+  | { type: 'challenge'; carrier: number; challenger: number }
   /** How a shot at goal ended. */
   | { type: 'shot'; player: number; outcome: ShotOutcome }
   /** The ball hit a post or the bar. */

@@ -117,7 +117,8 @@ export class Ai {
       return current?.kind === 'holding' ? current : { kind: 'holding', to: null };
     }
     const current = this.states[p.id];
-    if (current?.kind === 'dive' && (!current.done || p.keeper?.busy)) return current;
+    // A dive not yet made is called off if the ball goes dead (a goal, or the whistle).
+    if (current?.kind === 'dive' && ((!current.done && sim.match.inPlay) || p.keeper?.busy)) return current;
     const track = this.track;
     if (!track || !sim.match.inPlay || sim.possession.owner !== null || p.keeper?.busy) return null;
     // Only trust the prediction while the ball is still on it (a new kick waits for the next one).

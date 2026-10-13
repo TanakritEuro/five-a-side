@@ -383,6 +383,18 @@ export const TUNING = {
     /** Players keep their bodies off a ball moving slower than this (m/s) and lower than this (m). */
     ballClearSpeed: 1,
     ballClearHeight: 2,
+    /**
+     * Opponents who meet share the push by weight: `strength` moves it ±this, and
+     * running at full sprint adds this much more (momentum).
+     */
+    strengthSpread: 0.5,
+    momentum: 0.5,
+    /**
+     * In a shoulder challenge (the ball carrier and an opponent in contact), the heavier
+     * one also shoves the other off their line at up to this speed (m/s), scaled by how
+     * much heavier they are.
+     */
+    shove: 4,
   },
   keeper: {
     /** Per level (ported from the penalty game, then given open-play extras). */

@@ -15,10 +15,10 @@ import { tryKick, updateKickButtons } from './kick';
 import { stepLocomotion } from './locomotion';
 import { Match, type MatchAction } from './match';
 import { AVERAGE, createPlayer, integratePlayer, syncBody, teleportBody, type Player, type PlayerSpec } from './player';
-import { Possession } from './possession';
+import { canPlayBall, Possession } from './possession';
 import { chooseTaker, faceNearestTeammate, holdRestartShape, placeForRestart } from './restarts';
 import type { Restart, RulesContext } from './rules';
-import { keepOffBall, separatePlayers } from './separation';
+import { keepOffBall, separatePlayers, type Challenge } from './separation';
 import { startTackle, stepTackle, tackleMove } from './tackle';
 
 /** A keeper gathers a loose ball no higher than this (m) with their hands. */
@@ -89,6 +89,8 @@ export class Sim {
   readonly keeperLevels: readonly [KeeperLevel, KeeperLevel];
   /** The ball's velocity at the start of the current step's physics. */
   private incoming: Vec3 = { x: 0, y: 0, z: 0 };
+  /** Shoulder challenges in progress last step (carrier and challenger ids, as "carrier:challenger"). */
+  private challenges = new Set<string>();
 
   static async create(options: SimOptions): Promise<Sim> {
     return new Sim(await createPhysics(), options);
@@ -144,6 +146,34 @@ export class Sim {
     }
   }
 
+  /** Report shoulder challenges as they begin. */
+  private noteChallenges(challenges: readonly Challenge[], events: SimEvent[]): void {
+    const now = new Set<string>();
+    for (const c of challenges) {
+      const key = `${c.carrier}:${c.challenger}`;
+      now.add(key);
+      if (!this.challenges.has(key)) events.push({ type: 'challenge', carrier: c.carrier, challenger: c.challenger });
+    }
+    this.challenges = now;
+  }
+
+  /**
+   * A challenger who has shouldered the carrier off the ball (it's at their feet, and
+   * nearer them than the carrier) has a loose ball to take with their first touch.
+   */
+  private shoulderOff(challenges: readonly Challenge[]): void {
+    const b = this.ball.translation();
+    for (const c of challenges) {
+      const carrier = this.players[c.carrier];
+      const challenger = this.players[c.challenger];
+      if (challenger.touchCooldown > 0 || !canPlayBall(challenger, b)) continue;
+      const near = (p: Player) => Math.hypot(b.x - p.pos.x, b.z - p.pos.z);
+      if (near(challenger) >= near(carrier)) continue;
+      this.possession.lose();
+      return;
+    }
+  }
+
   /** Put the ball down at rest on the ground at `at`. */
   placeBall(at: Vec2): void {
     this.ball.setTranslation({ x: at.x, y: BALL_RADIUS, z: at.z }, true);
@@ -194,7 +224,9 @@ export class Sim {
       integratePlayer(p, dt);
       p.keeper?.step(dt, p.pos.z);
     }
-    separatePlayers(this.players);
+    const challenges = separatePlayers(this.players, this.possession.owner);
+    this.noteChallenges(challenges, events);
+    if (match.inPlay) this.shoulderOff(challenges);
     keepOffBall(this.players, this.ball.translation(), this.ball.linvel(), this.handling.holder);
     if (match.phase.kind === 'restart') {
       const b = this.ball.translation();

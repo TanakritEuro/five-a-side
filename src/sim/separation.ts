@@ -1,19 +1,38 @@
 import { TUNING } from '../config';
-import { BALL_RADIUS, HALF_LENGTH, HALF_WIDTH, PLAYER_RADIUS } from '../constants';
-import { clamp, type Vec3 } from '../math';
+import { BALL_RADIUS, HALF_LENGTH, HALF_WIDTH, PHYSICS_STEP, PLAYER_RADIUS } from '../constants';
+import { attrScale, clamp, type Vec3 } from '../math';
 import type { Player } from './player';
 
+/** A shoulder challenge this step: the ball `carrier` and an opponent in contact with them. */
+export interface Challenge {
+  carrier: number;
+  challenger: number;
+}
+
 /**
- * Push overlapping players apart, each moving half the overlap along the line between
- * them, and keep them inside the boards. Players are kinematic, so the physics engine
- * won't do this; game code decides how bodies meet (shoulder challenges come in M4).
- * Pairs are visited in a fixed order so the result is deterministic. A few passes
- * settle clusters of three or more.
+ * How much a player weighs in a coming-together: strength, plus momentum at speed.
  */
-export function separatePlayers(players: readonly Player[]): void {
-  const min = 2 * PLAYER_RADIUS + TUNING.separation.gap;
+export function weight(p: Player): number {
+  const S = TUNING.separation;
+  return attrScale(p.attrs.strength, S.strengthSpread) * (1 + (S.momentum * p.speed) / TUNING.locomotion.sprintSpeed);
+}
+
+/**
+ * Push overlapping players apart along the line between them, and keep them inside the
+ * boards. Players are kinematic, so the physics engine won't do this; game code decides
+ * how bodies meet. Teammates split the overlap evenly. Opponents split it by weight, the
+ * lighter one moving more, and when one of them has the ball (`owner`) it's a shoulder
+ * challenge: the heavier one shoves the other off their line as well (and `Sim` lets a
+ * challenger who gets to the ball first take it). Pairs are visited
+ * in a fixed order so the result is deterministic. A few passes settle clusters of
+ * three or more. Returns this step's shoulder challenges.
+ */
+export function separatePlayers(players: readonly Player[], owner: number | null = null): Challenge[] {
+  const S = TUNING.separation;
+  const min = 2 * PLAYER_RADIUS + S.gap;
   const maxX = HALF_LENGTH - PLAYER_RADIUS;
   const maxZ = HALF_WIDTH - PLAYER_RADIUS;
+  const challenges: Challenge[] = [];
   for (let pass = 0; pass < 3; pass++) {
     let moved = false;
     for (let i = 0; i < players.length; i++) {
@@ -30,18 +49,36 @@ export function separatePlayers(players: readonly Player[]): void {
           dz = 0;
           d = 1;
         }
-        const push = (min - Math.min(d, min)) / 2;
+        const p = players[i];
+        const q = players[j];
+        const overlap = min - Math.min(d, min);
+        // The share of the push each takes: half each between teammates, by weight between opponents.
+        let shareA = 0.5;
+        let shove = 0;
+        if (p.team !== q.team) {
+          const wa = weight(p);
+          const wb = weight(q);
+          shareA = wb / (wa + wb);
+          if (pass === 0 && (p.id === owner || q.id === owner)) {
+            challenges.push(p.id === owner ? { carrier: p.id, challenger: q.id } : { carrier: q.id, challenger: p.id });
+            // The heavier one leans the other off their line (shareA > 0.5: a is lighter).
+            shove = S.shove * Math.abs(wa - wb) / (wa + wb) * PHYSICS_STEP;
+          }
+        }
+        const pushA = overlap * shareA + (shareA > 0.5 ? shove : 0);
+        const pushB = overlap * (1 - shareA) + (shareA < 0.5 ? shove : 0);
         const ux = dx / d;
         const uz = dz / d;
-        a.x = clamp(a.x - ux * push, -maxX, maxX);
-        a.z = clamp(a.z - uz * push, -maxZ, maxZ);
-        b.x = clamp(b.x + ux * push, -maxX, maxX);
-        b.z = clamp(b.z + uz * push, -maxZ, maxZ);
+        a.x = clamp(a.x - ux * pushA, -maxX, maxX);
+        a.z = clamp(a.z - uz * pushA, -maxZ, maxZ);
+        b.x = clamp(b.x + ux * pushB, -maxX, maxX);
+        b.z = clamp(b.z + uz * pushB, -maxZ, maxZ);
         moved = true;
       }
     }
-    if (!moved) return;
+    if (!moved) break;
   }
+  return challenges;
 }
 
 /**

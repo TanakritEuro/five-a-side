@@ -40,6 +40,12 @@ export class Possession {
     this.owner = null;
   }
 
+  /** The owner has lost control of it (shouldered off it), though they touched it last. */
+  lose(): void {
+    this.released = true;
+    this.owner = null;
+  }
+
   /** Nobody has it (restarts). */
   reset(): void {
     this.lastTouch = null;
