@@ -8,6 +8,8 @@ import {
 } from '../constants';
 import type { PlayerView } from '../render/interpolate';
 import type { Team } from '../team/teams';
+import { Animator } from './animator';
+import { cyclePose, gaitStyle, moving } from './poses';
 import { blendPoses, DEFAULT_DIMS, Rig, type Kit, type Pose, type RigDims } from './rig';
 import { SkinnedFigure, type ClipBlend, type FigureTemplate } from './skinned';
 
@@ -67,29 +69,21 @@ abstract class RiggedFigure implements Figure {
 
 /** An outfield player. */
 export class Footballer extends RiggedFigure {
+  private readonly animator = new Animator();
+
   constructor(template: FigureTemplate | null, kit: Kit) {
     super(template, kit, DEFAULT_DIMS);
   }
 
-  update(view: PlayerView): void {
+  update(view: PlayerView, dt: number): void {
     this.object.position.set(view.x, 0, view.z);
     // Heading θ points along (cos θ, sin θ) in (x, z): a rotation of −θ about +Y.
     this.object.rotation.y = -view.facing;
-    this.show(STAND, { name: 'Idle_Loop', time: view.now, weight: 1 });
+    const frame = this.animator.step(view, dt);
+    this.lean.rotation.z = frame.bank;
+    this.show(frame.pose, frame.clip);
   }
 }
-
-const STAND: Pose = {
-  joints: {
-    spine: { x: 0.06 },
-    shoulderL: { z: -0.12 },
-    shoulderR: { z: 0.12 },
-    elbowL: { x: 0.25 },
-    elbowR: { x: 0.25 },
-    hipL: { z: -0.05 },
-    hipR: { z: 0.05 },
-  },
-};
 
 /**
  * A keeper (ported from the penalty game's keeper/mesh.ts). The rig has the keeper's
@@ -99,6 +93,7 @@ const STAND: Pose = {
  */
 export class KeeperFigure extends RiggedFigure {
   private clock = 0;
+  private readonly animator = new Animator();
 
   constructor(template: FigureTemplate | null, kit: Kit) {
     super(template, kit, {
@@ -145,7 +140,11 @@ export class KeeperFigure extends RiggedFigure {
     };
     const stretch = Math.min(1, Math.abs(view.lean) / 1.0);
     const jumping = stretch < 0.2 ? Math.min(1, view.y / 0.3) : 0;
-    let pose = blendPoses(set, DIVE, stretch);
+    // On the move (not diving), the legs run; the arms stay where the colliders are.
+    this.animator.step(view, dt);
+    const run = diving ? 0 : moving(view.speed);
+    let pose = blendPoses(set, cyclePose(this.animator.phase, gaitStyle(view.speed)), run);
+    pose = blendPoses(pose, DIVE, stretch);
     pose = blendPoses(pose, JUMP, jumping);
 
     if (view.holding) {
