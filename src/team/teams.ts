@@ -21,10 +21,10 @@ export const TEAMS: readonly Team[] = [
     keeperShirt: 0x2fbf4a,
     squad: {
       keeper: { keeping: 0.6 },
-      defender: { tackling: 0.65, pace: 0.45 },
+      defender: { tackling: 0.65, pace: 0.45, strength: 0.65 },
       left: { pace: 0.65, passing: 0.55 },
       right: { pace: 0.6, shooting: 0.55 },
-      pivot: { shooting: 0.65, passing: 0.55 },
+      pivot: { shooting: 0.65, passing: 0.55, strength: 0.6 },
     },
   },
   {
@@ -35,8 +35,8 @@ export const TEAMS: readonly Team[] = [
     keeperShirt: 0xf2c230,
     squad: {
       keeper: { keeping: 0.55 },
-      defender: { tackling: 0.6, passing: 0.6 },
-      left: { pace: 0.6 },
+      defender: { tackling: 0.6, passing: 0.6, strength: 0.6 },
+      left: { pace: 0.6, strength: 0.4 },
       right: { pace: 0.55, passing: 0.6 },
       pivot: { shooting: 0.6, pace: 0.6 },
     },

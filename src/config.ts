@@ -115,8 +115,16 @@ export const TUNING = {
     trapRate: 10,
     /** Fastest a ball can be coming at a player (relative, m/s) for them to control it. */
     receiveSpeed: 12,
-    /** Fraction of the incoming relative speed left after a controlling first touch. */
-    receiveKeep: 0.15,
+    /**
+     * First touch: the fraction of the incoming (relative) pace the ball keeps, knocked on
+     * ahead of the receiver, rises from `touchKeep[0]` for a gentle ball to `touchKeep[1]`
+     * for one at `receiveSpeed`, for an average receiver; worse control keeps more.
+     */
+    touchKeep: [0.05, 0.4],
+    /** ...and comes off at up to this angle (radians, standard deviation) from their facing. */
+    touchSpread: 0.6,
+    /** How much the passing (control) rating moves the touch: ±this at 0 and 1. */
+    controlSpread: 0.6,
   },
   kick: {
     /** Seconds a released kick waits for the ball to come into reach before it's dropped. */

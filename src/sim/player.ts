@@ -13,6 +13,8 @@ export interface Attributes {
   shooting: number;
   tackling: number;
   keeping: number;
+  /** Holding off a challenge: shoulder to shoulder, and keeping the ball in a tackle. */
+  strength: number;
 }
 
 export const AVERAGE: Readonly<Attributes> = Object.freeze({
@@ -21,6 +23,7 @@ export const AVERAGE: Readonly<Attributes> = Object.freeze({
   shooting: 0.5,
   tackling: 0.5,
   keeping: 0.5,
+  strength: 0.5,
 });
 
 /** Who a player is and where they line up. */

@@ -2,7 +2,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { isOnGround, rollingSpin } from '../ball/forces';
 import { TUNING } from '../config';
 import { BALL_RADIUS, HALF_LENGTH, HALF_WIDTH, PLAYER_RADIUS } from '../constants';
-import { clamp, damp, gaussian, headingVec, wrapAngle, type Rng, type Vec2, type Vec3 } from '../math';
+import { attrScale, clamp, damp, gaussian, headingVec, wrapAngle, type Rng, type Vec2, type Vec3 } from '../math';
 import type { SimEvent } from './events';
 import type { Player } from './player';
 import { ballRelative, canPlayBall, type Possession } from './possession';
@@ -18,7 +18,7 @@ const DEAD_ZONE = 0.05;
  *   turns are taken in a few touches. They also retake it if it's rolling off that line.
  * - **Stopping** with the ball (no move input): trap it, bringing it to a halt.
  * - **Receiving** a loose ball that isn't coming too fast: a first touch that takes most
- *   of the pace off it, and possession.
+ *   of the pace off it (less for a hard ball and a poor touch), and possession.
  * `move` is the player's command direction. Call after the player has moved and before
  * the physics step.
  */
@@ -79,8 +79,15 @@ export function playBall(
   if (possession.owner !== null) return null;
   const rx = v.x - p.vel.x;
   const rz = v.z - p.vel.z;
-  if (Math.hypot(rx, rz) > D.receiveSpeed) return null; // too hot to handle: it bounces off
-  setBall(ball, p.vel.x + rx * D.receiveKeep, vy, p.vel.z + rz * D.receiveKeep);
+  const incoming = Math.hypot(rx, rz);
+  if (incoming > D.receiveSpeed) return null; // too hot to handle: it bounces off
+  // The first touch: the harder the ball and the poorer their control, the more pace it
+  // keeps, knocked on ahead of them at a less certain angle.
+  const hard = (incoming / D.receiveSpeed) ** 2;
+  const clumsy = attrScale(1 - p.attrs.passing, D.controlSpread);
+  const keep = (D.touchKeep[0] + (D.touchKeep[1] - D.touchKeep[0]) * hard) * clumsy;
+  const d = headingVec(p.facing + gaussian(rng) * D.touchSpread * hard * clumsy);
+  setBall(ball, p.vel.x + d.x * incoming * keep, vy, p.vel.z + d.z * incoming * keep);
   p.touchCooldown = D.touchCooldown;
   possession.control(p.id);
   return { type: 'touch', player: p.id, kind: 'receive' };
