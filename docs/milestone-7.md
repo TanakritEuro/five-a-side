@@ -4,6 +4,33 @@ Goal: two people on two devices play each other, one team each, over the interne
 from `../penalty-shootout/src/online/`: rooms with a four-letter code over PeerJS, and the
 host runs the match. The guest sends its inputs and draws what the host sends.
 
+## Status: done
+
+Checked for real through the public PeerJS server, in two Chrome tabs:
+
+- the host opened a room and the guest joined with its code;
+- the guest's controls moved its player in the host's match (running at full jog);
+- a pause from the guest paused both, and a resume from the host resumed both;
+- when the guest quit, the host carried on with the AI running the guest's team;
+- a wrong code said "No room with that code".
+
+No console errors on either side. Across two devices on different networks is still to try.
+
+Where the build differs from the plan below:
+
+- **The menu and the game integration came in one commit,** not two. The menu's online
+  row was needed to try the integration at all.
+- **The recorder and replays work from snapshot ticks** now, not snapshot counts, because
+  a guest's frames come every other step. Offline play is unchanged by it.
+- **The host hangs up half a second after its last message** ("reject", "bye"). Closing
+  at once could drop it, and the in-memory test link showed exactly that.
+- **R (replay the last few seconds) isn't offered to the host,** since it would freeze
+  the guest's match too. The guest can use it: it's local, and the guest catches up after.
+- **Not done:**
+  - a rematch button (both go back to the menu at full time);
+  - prediction for the guest's own player;
+  - a TURN relay for networks where peer-to-peer can't connect.
+
 ## Scope decisions
 
 Decided with you: host-authoritative with no prediction; draws stand; a separate online

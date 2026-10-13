@@ -25,7 +25,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1–6 done (plans and notes in `docs/milestone-1.md` … `docs/milestone-6.md`).
+All seven milestones done (plans and notes in `docs/milestone-1.md` … `docs/milestone-7.md`).
 A five-a-side game against a team AI. It opens on a start menu, with an AI match
 playing behind it. You play a friendly (any two of eight invented teams, any level,
 2/3/5-minute halves) or a cup run: three knockout rounds, easy then normal then hard, with
@@ -68,10 +68,16 @@ stats. Kick-ins and goal clearances have a taker. Esc pauses.
   - Synthesised crowd and sound effects (`audio/`); M mutes.
   - Gamepad and touch controls.
   - Lifetime stats are kept in localStorage.
+- **Online** (`src/online/`, M7): two people, one team each, through a four-letter room
+  code (PeerJS; the public server only introduces the browsers).
+  - The host runs the match and is the home team; the guest sends its controls and draws
+    the host's frames about 100 ms behind.
+  - Pauses and goal replays are shared. If the guest drops, the AI takes their team.
+  - Online results go in a separate record.
 
 AI vs AI at normal averages about 6 goals, 35 tackles (55–60% won) and 3 fouls a match
 (40 seeds; 16 seeds is too few to judge a change by); hard beats normal beats easy (the soak and difficulty tests hold these). `npm run
-stats` prints match statistics for tuning. Milestone 7 (online, optional) is next.
+stats` prints match statistics for tuning.
 
 Things that aren't obvious from the code:
 - Rapier clamps angular velocity to a quarter turn per step (47 rad/s at 60 Hz). The ball
@@ -140,6 +146,13 @@ Things that aren't obvious from the code:
   reload the page after CSS changes before judging them.
 - Chrome's automated clicks don't fire pointer events, so audio also unlocks on `click`
   (browsers need a gesture before audio plays).
+- Online, the guest has no simulation: `Game`'s match run then has `sim: null` and
+  draws `GuestSession.view()`. Anything the guest must show has to be in `WireFrame`
+  (snapshots.ts) or come as an event. Bump `PROTOCOL` whenever a message changes.
+- Testing online in two tabs of one Chrome window: the tab you aren't looking at gets no
+  animation frames, so its side stops. Bring the host's tab to the front. Drive the guest
+  from the console: `game.guestFrame(game.run, 1 / 60)` sends its current controls.
+  `tests/online.test.ts` joins the two ends in memory instead.
 
 ## The game
 
@@ -273,6 +286,9 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/input/gamepad.ts`, `src/ui/touch.ts` — gamepad and on-screen touch controls.
 - `src/ui/menu.ts`, `fulltime.ts` — start and pause menus; the full-time screen.
 - `src/sim/shootout.ts` — a shootout's turns and when it's decided.
+- `src/online/link.ts` — PeerJS rooms and the link between two browsers (ported).
+- `src/online/protocol.ts`, `snapshots.ts` — the messages and their checks; snapshots packed into a Float32Array.
+- `src/online/host.ts`, `guest.ts`, `loopback.ts` — the two ends of an online match; an in-memory link for tests.
 - `src/input/keyboard.ts` — keys to `Command`s (screen-relative movement).
 - `src/render/interpolate.ts` — each player's view between the last two steps (`PlayerView`), and the ball.
 - `src/characters/rig.ts`, `skinned.ts` — the procedural rig (ported) and the Mannequin it drives; the kit shader.
@@ -284,7 +300,6 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/main.ts` — entry point; reads the URL flags.
 - `tests/` — Vitest. `helpers.ts` has a sim factory, command helpers and a random driver. `tests/stats/` is `npm run stats`.
 
-Online play (M7) would add `src/online/`, as in the penalty game.
 
 ## Conventions
 
@@ -338,7 +353,7 @@ code to this game's axes (goal lines on X, not Z) and keep the sim/presentation 
 | Done | Synthesised crowd and sound effects | `src/audio/sound.ts` |
 | Done (rebuilt on snapshots) | Recorder and replays, camera director | `src/replay/`, `src/camera/director.ts` |
 | Done (rebuilt) | Menus, stats, sessions, penalties for drawn cup ties | `src/ui/`, `src/match/` |
-| M7 | Online play (PeerJS, host-authoritative) | `src/online/` |
+| Done (rebuilt on snapshots) | Online play (PeerJS, host-authoritative) | `src/online/` |
 
 When porting an asset, copy its row in `ASSETS.md` too.
 
