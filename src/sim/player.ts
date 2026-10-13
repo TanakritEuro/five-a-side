@@ -5,6 +5,7 @@ import { KeeperBody } from '../keeper/body';
 import { createKeeperRigidBody, createPlayerBody, type Physics } from '../physics';
 import type { Role, Slot } from '../team/formation';
 import type { MoveState } from './locomotion';
+import type { TackleState } from './tackle';
 
 /** Ratings from 0 to 1; 0.5 is average. They scale the matching `TUNING` values. */
 export interface Attributes {
@@ -71,6 +72,10 @@ export interface Player extends MoveState {
   readonly keeper: KeeperBody | null;
   /** Kick buttons held last step, for press/release detection. */
   held: Record<KickKind, boolean>;
+  /** A tackle in progress (lunging or recovering), or null. */
+  tackle: TackleState | null;
+  /** The tackle button was held last step. */
+  tackleHeld: boolean;
 }
 
 export function createPlayer(physics: Physics, id: number, spec: PlayerSpec): Player {
@@ -97,6 +102,8 @@ export function createPlayer(physics: Physics, id: number, spec: PlayerSpec): Pl
     pendingKick: null,
     touchCooldown: 0,
     held: { pass: false, shoot: false, lob: false },
+    tackle: null,
+    tackleHeld: false,
   };
 }
 
@@ -132,6 +139,7 @@ export function placePlayer(p: Player, pos: Vec2, facing: number): void {
   p.facing = facing;
   p.charge = null;
   p.pendingKick = null;
+  p.tackle = null;
   if (p.keeper) {
     p.keeper.reset(pos.z);
     p.keeper.apply(pos.x, true);

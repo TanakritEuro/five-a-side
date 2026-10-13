@@ -75,7 +75,7 @@ export function playBall(
     return { type: 'touch', player: p.id, kind: 'dribble' };
   }
 
-  // A loose ball: first touch. (Taking it off someone else is a tackle: Milestone 4.)
+  // A loose ball: first touch. (Taking it off someone else is a tackle: see tackle.ts.)
   if (possession.owner !== null) return null;
   const rx = v.x - p.vel.x;
   const rz = v.z - p.vel.z;

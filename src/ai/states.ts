@@ -1,8 +1,10 @@
-import { TUNING } from '../config';
-import type { Vec2 } from '../math';
+import { TUNING, type AiLevel } from '../config';
+import { PHYSICS_STEP } from '../constants';
+import type { Rng, Vec2 } from '../math';
 import type { Command } from '../sim/command';
 import type { Player } from '../sim/player';
 import type { Sim } from '../sim/sim';
+import { approach, winChance } from '../sim/tackle';
 import type { TeamPlan } from './brain';
 import { ballPos, goalSide, ownGoal, steer } from './geometry';
 import { arrive, insidePitch, pursue, seek, separate } from './steering';
@@ -92,6 +94,28 @@ export function offBall(sim: Sim, p: Player, state: AiState, plan: TeamPlan): Co
     case 'takeRestart':
       throw new Error(`offBall called for a state with its own command (${state.kind})`);
   }
+}
+
+/**
+ * Should the presser go in for the tackle now? Only with the ball in reach in front of
+ * them, a fair chance of winning it (the level sets how fair), and not from behind unless
+ * the carrier is through on goal. Even then they wait for the moment, at the level's rate.
+ */
+export function pressTackle(sim: Sim, p: Player, carrier: Player, level: AiLevel, rng: Rng): boolean {
+  const T = TUNING.tackle;
+  if (p.tackle || !sim.match.inPlay) return false;
+  const b = ballPos(sim);
+  const dx = b.x - p.pos.x;
+  const dz = b.z - p.pos.z;
+  const d = Math.hypot(dx, dz);
+  if (d > T.reach * 0.9) return false;
+  const f = { x: Math.cos(p.facing), z: Math.sin(p.facing) };
+  if ((dx * f.x + dz * f.z) / (d || 1) < Math.cos(T.aimCone * Math.PI / 180)) return false;
+  const g = ownGoal(sim, p.team);
+  const through = Math.hypot(carrier.pos.x - g.x, carrier.pos.z - g.z) < TUNING.ai.throughOnGoal;
+  if (approach(p, carrier) < TUNING.ai.behindTackle && !through) return false;
+  if (winChance(p, carrier, b) < level.tackleChance) return false;
+  return rng() < level.tackleRate * PHYSICS_STEP;
 }
 
 /** Goal-side of where `opponent` is heading, by `markDistance`, nudged towards the ball to cut off a pass to them. */

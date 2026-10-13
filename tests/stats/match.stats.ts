@@ -17,7 +17,7 @@ const LEVELS = (process.env.LEVELS ?? 'normal,normal').split(',') as [LevelName,
 it('prints match statistics', async () => {
   for (const seed of SEEDS) {
     const sim = await Sim.create({ seed, players: fullLineup(), ai: true, kickoff: true, levels: LEVELS });
-    const perTeam = [0, 1].map(() => ({ shots: 0, wild: 0, passes: 0, saves: 0, goals: 0 }));
+    const perTeam = [0, 1].map(() => ({ shots: 0, wild: 0, passes: 0, saves: 0, goals: 0, tackles: 0, won: 0, fouls: 0 }));
     const wildBy: Record<string, number> = {};
     const goalFrom: Record<string, number> = {};
     let lastKick = 'none';
@@ -31,6 +31,12 @@ it('prints match statistics', async () => {
         counts[e.type] = (counts[e.type] ?? 0) + 1;
         if (e.type === 'kick') perTeam[sim.players[e.player].team][e.kind === 'shoot' ? (e.atGoal ? 'shots' : 'wild') : 'passes']++;
         if (e.type === 'save') perTeam[sim.players[e.player].team].saves++;
+        if (e.type === 'tackle') {
+          const t = perTeam[sim.players[e.player].team];
+          t.tackles++;
+          if (e.outcome === 'won') t.won++;
+          if (e.outcome === 'foul') t.fouls++;
+        }
         if (e.type === 'kick' && e.kind === 'shoot' && !e.atGoal) {
           const role = sim.players[e.player].spec.role;
           wildBy[role] = (wildBy[role] ?? 0) + 1;

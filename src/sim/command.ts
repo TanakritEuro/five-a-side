@@ -16,7 +16,7 @@ export interface Command {
   shoot: boolean;
   /** Lofted pass / chip, held for power (L). Not used until a later milestone. */
   lob: boolean;
-  /** Standing tackle (K out of possession). Not used until Milestone 4. */
+  /** Standing tackle (K when the other team has the ball): a press starts a lunge. */
   tackle: boolean;
   /** Switch player (J out of possession). */
   switch: boolean;

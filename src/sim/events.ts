@@ -4,6 +4,7 @@ import type { Vec3 } from '../math';
 import type { GoalEnd } from '../physics';
 import type { KickKind } from './player';
 import type { Restart } from './rules';
+import type { TackleOutcome } from './tackle';
 
 /**
  * Things that happened during a simulation step, for the presentation (status text,
@@ -14,6 +15,8 @@ export type SimEvent =
   | { type: 'touch'; player: number; kind: 'dribble' | 'receive' | 'deflect' }
   /** A pass or shot: where it was aimed (after error), who a pass was for, and its predicted path. */
   | { type: 'kick'; player: number; kind: KickKind; power: number; target: Vec3; atGoal: boolean; receiver: number | null; path: BallPath }
+  /** A tackle met (or missed) the ball: `carrier` is who had it, if anyone. */
+  | { type: 'tackle'; player: number; carrier: number | null; outcome: TackleOutcome }
   /** How a shot at goal ended. */
   | { type: 'shot'; player: number; outcome: ShotOutcome }
   /** The ball hit a post or the bar. */

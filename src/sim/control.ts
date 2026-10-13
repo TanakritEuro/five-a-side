@@ -54,8 +54,9 @@ export class HumanControl {
       // lob (a later milestone).
       press: raw.press && defending,
       lob: raw.lob && !defending,
-      // Tackles arrive in Milestone 4; until then K only ever shoots.
-      tackle: false,
+      // K tackles when the other team has the ball, and shoots otherwise.
+      shoot: raw.shoot && !defending,
+      tackle: raw.tackle && defending,
     };
   }
 

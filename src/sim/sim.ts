@@ -19,6 +19,7 @@ import { Possession } from './possession';
 import { chooseTaker, faceNearestTeammate, holdRestartShape, placeForRestart } from './restarts';
 import type { Restart, RulesContext } from './rules';
 import { keepOffBall, separatePlayers } from './separation';
+import { startTackle, stepTackle, tackleMove } from './tackle';
 
 /** A keeper gathers a loose ball no higher than this (m) with their hands. */
 const GATHER_HEIGHT = 2.2;
@@ -171,8 +172,11 @@ export class Sim {
     this.noteHumans(commands);
 
     for (const p of this.players) {
-      const cmd = resolved[p.id];
       p.touchCooldown = Math.max(0, p.touchCooldown - dt);
+      // Anyone not on the ball (nor holding it, nor lining up a kick) can tackle in open play.
+      const free = match.inPlay && this.possession.owner !== p.id && this.handling.holder !== p.id && !p.charge && !p.keeper?.busy;
+      startTackle(p, resolved[p.id], free, this.ball.translation());
+      const cmd = tackleMove(p, resolved[p.id]);
       if (p.keeper) {
         if (cmd.dive && match.inPlay && this.handling.holder !== p.id) p.keeper.dive(cmd.dive.across, cmd.dive.height, this.keeperLevels[p.team]);
         if (p.keeper.busy) {
@@ -199,6 +203,10 @@ export class Sim {
     const holder = this.handling.holder === null ? null : this.players[this.handling.holder];
     if (holder) this.handling.confine(holder, ownGoalX(this, holder.team));
     for (const p of this.players) syncBody(p);
+    for (const p of this.players) {
+      const tackled = stepTackle(p, this.players, this.ball, this.possession, this.rng, dt, match.inPlay);
+      if (tackled) this.onPlayed(tackled, events);
+    }
 
     for (const p of this.players) {
       updateKickButtons(p, resolved[p.id]);

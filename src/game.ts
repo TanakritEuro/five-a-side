@@ -10,6 +10,7 @@ import { KeeperMesh } from './render/keeper';
 import { createMarker, createPlayerMesh, createScene, type GameScene } from './scene';
 import type { Command } from './sim/command';
 import type { SimEvent } from './sim/events';
+import type { TackleOutcome } from './sim/tackle';
 import type { RestartKind } from './sim/rules';
 import { HumanControl } from './sim/control';
 import { Sim } from './sim/sim';
@@ -31,8 +32,9 @@ export interface GameOptions {
   difficulty: LevelName;
 }
 
-const HINT = 'WASD: move · Shift: sprint · J: pass · K (hold): shoot';
+const HINT = 'WASD: move · Shift: sprint · J: pass / switch · K: shoot (hold) / tackle · L: call a press';
 const RESTART_NAMES: Record<RestartKind, string> = { kickoff: 'Kick-off', kickIn: 'Kick-in', goalClearance: 'Goal clearance' };
+const TACKLE_NAMES: Record<TackleOutcome, string> = { won: 'Won it!', missed: 'Missed', foul: 'Foul' };
 
 /**
  * Wires the simulation to the screen: keyboard → commands → fixed simulation steps, then
@@ -157,6 +159,10 @@ export class Game {
         break;
       case 'restart':
         this.hud.flash(RESTART_NAMES[e.restart.kind], 1.5);
+        break;
+      case 'tackle':
+        // Only your own tackles: the AI's are plain to see.
+        if (e.player === this.controlled) this.hud.flash(TACKLE_NAMES[e.outcome], 0.8);
         break;
       case 'halfTime':
         this.hud.flash(`Half time · ${scoreLine(e.score)}`, TUNING.match.halfTimePause);

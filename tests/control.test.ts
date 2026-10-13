@@ -84,3 +84,16 @@ describe('switching', () => {
     expect(sim.match.phase.kind).toBe('restart');
   });
 });
+
+describe('K', () => {
+  it('tackles when the other team has the ball, and shoots otherwise', async () => {
+    const { sim, control } = await setup();
+    const me = sim.players[control.controlled];
+    sim.placeBall({ x: me.pos.x + 0.6, z: me.pos.z });
+    sim.possession.control(me.id);
+    expect(control.command(sim, keys({ k: true }))).toMatchObject({ shoot: true, tackle: false });
+    const thief = sim.players[byRole(sim, 1, 'pivot')];
+    sim.possession.control(thief.id);
+    expect(control.command(sim, keys({ k: true }))).toMatchObject({ shoot: false, tackle: true });
+  });
+});

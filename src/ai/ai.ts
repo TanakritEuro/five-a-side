@@ -8,7 +8,7 @@ import type { Sim } from '../sim/sim';
 import { TeamBrain, type TeamPlan } from './brain';
 import { diveCommand, diveTick, holdingCommand, incomingShot, planDive } from './keeper';
 import { dribble, runPlan, takeRestart } from './onball';
-import { offBall, type AiState } from './states';
+import { offBall, pressTackle, type AiState } from './states';
 
 export type { AiState, DribblePlan } from './states';
 
@@ -63,7 +63,12 @@ export class Ai {
     if (state.kind === 'takeRestart') return takeRestart(sim, p);
     if (state.kind === 'dive') return diveCommand(sim, state);
     if (state.kind === 'holding') return holdingCommand(sim, p, state);
-    return offBall(sim, p, state, this.planOf(p.team));
+    const cmd = offBall(sim, p, state, this.planOf(p.team));
+    if (state.kind === 'press') {
+      const tackle = pressTackle(sim, p, sim.players[state.carrier], this.levels[p.team], this.rng);
+      return tackle ? { ...cmd, tackle } : cmd;
+    }
+    return cmd;
   }
 
   planOf(team: 0 | 1): TeamPlan {

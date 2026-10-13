@@ -17,6 +17,10 @@ export interface AiLevel {
   attributes: number;
   /** Steps between the team brain's re-plans: how fast the team as a whole reacts. */
   brainInterval: number;
+  /** A presser goes in for the tackle only when they rate their chance (0–1) of winning it at least this... */
+  tackleChance: number;
+  /** ...and then at this rate (per second): how quickly they spot the moment. */
+  tackleRate: number;
 }
 
 export type KeeperLevelName = 'easy' | 'normal' | 'hard';
@@ -38,9 +42,9 @@ export interface KeeperLevel {
 export type LevelName = 'easy' | 'normal' | 'hard';
 
 const LEVELS: Record<LevelName, AiLevel> = {
-  easy: { reaction: 0.35, decisionInterval: 0.3, noise: 0.4, passMargin: -0.15, keeper: 'easy', attributes: -0.2, brainInterval: 12 },
-  normal: { reaction: 0.3, decisionInterval: 0.25, noise: 0.18, passMargin: 0.1, keeper: 'normal', attributes: 0, brainInterval: 6 },
-  hard: { reaction: 0.25, decisionInterval: 0.25, noise: 0.08, passMargin: 0.1, keeper: 'hard', attributes: 0.12, brainInterval: 4 },
+  easy: { reaction: 0.35, decisionInterval: 0.3, noise: 0.4, passMargin: -0.15, keeper: 'easy', attributes: -0.2, brainInterval: 12, tackleChance: 0.2, tackleRate: 1.5 },
+  normal: { reaction: 0.3, decisionInterval: 0.25, noise: 0.18, passMargin: 0.1, keeper: 'normal', attributes: 0, brainInterval: 6, tackleChance: 0.35, tackleRate: 2.5 },
+  hard: { reaction: 0.25, decisionInterval: 0.25, noise: 0.08, passMargin: 0.1, keeper: 'hard', attributes: 0.12, brainInterval: 4, tackleChance: 0.4, tackleRate: 4 },
 };
 
 export const TUNING = {
@@ -125,6 +129,49 @@ export const TUNING = {
     touchSpread: 0.6,
     /** How much the passing (control) rating moves the touch: ±this at 0 and 1. */
     controlSpread: 0.6,
+  },
+  tackle: {
+    /** Seconds of lunge, and when in it (s) the tackle meets the ball. */
+    duration: 0.35,
+    contactTime: 0.12,
+    /** Afterwards, seconds of recovery (slowed, can't tackle again), moving at this fraction of the asked-for move. */
+    recovery: 0.6,
+    recoverMove: 0.4,
+    /** How far (m) from the tackler's centre, and in what half-angle (degrees) in front, the ball can be won. */
+    reach: 1.3,
+    cone: 70,
+    /** The lunge goes at the ball if it's within this distance (m) and half-angle (degrees) in front. */
+    aimRange: 2.2,
+    aimCone: 60,
+    /** Highest the ball's centre can be (m) to be tackled. */
+    maxHeight: 0.6,
+    /** A carrier this much further away than `reach` (m) can still be caught by a tackle that misses the ball. */
+    bodyReach: 0.4,
+    /** Chance of winning the ball off an average carrier, head-on, with it away from their feet. */
+    base: 0.65,
+    /** The angle factor from directly behind the carrier (1 head-on). */
+    fromBehind: 0.35,
+    /** Ball this close to the carrier (m) is at their feet (timing factor `tightTiming`); this far, off them (1). */
+    atFeet: 0.45,
+    offFeet: 0.85,
+    tightTiming: 0.45,
+    /** How much ratings move the chance: the tackler's `tackling` against the carrier's `strength` and `passing`. */
+    ratingSpread: 0.35,
+    minChance: 0.05,
+    maxChance: 0.9,
+    /** Chance of getting a foot to a loose ball in reach. */
+    looseBall: 0.85,
+    /** Foul chance for a missed tackle with the carrier in reach: base, plus from behind, plus at full sprint. */
+    foulBase: 0.06,
+    foulBehind: 0.45,
+    foulSpeed: 0.15,
+    /** A won ball is poked this fast (m/s, ±30%) at this angle (degrees, ± spread) off the tackle's line. */
+    pokeSpeed: 3.5,
+    pokeAngle: 25,
+    pokeSpread: 12,
+    /** After winning it, seconds before the tackler, and the beaten carrier, can touch the ball. */
+    afterWin: 0.12,
+    beaten: 0.4,
   },
   kick: {
     /** Seconds a released kick waits for the ball to come into reach before it's dropped. */
@@ -254,6 +301,9 @@ export const TUNING = {
     keeperHold: 0.6,
     /** ...or clear it upfield if nobody is open after this long (s). */
     keeperClear: 2.5,
+    /** A presser goes in from behind the carrier (see `approach`, below this) only when they're within this far (m) of goal. */
+    behindTackle: -0.3,
+    throughOnGoal: 10,
     /** Defending: the presser closes to this far (m) goal-side of the ball, the cover sits this far back... */
     pressDistance: 0.8,
     coverDistance: 4,
