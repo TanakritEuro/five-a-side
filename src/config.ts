@@ -162,9 +162,9 @@ export const TUNING = {
     /** Chance of getting a foot to a loose ball in reach. */
     looseBall: 0.85,
     /** Foul chance for a missed tackle with the carrier in reach: base, plus from behind, plus at full sprint. */
-    foulBase: 0.06,
-    foulBehind: 0.45,
-    foulSpeed: 0.15,
+    foulBase: 0.1,
+    foulBehind: 0.5,
+    foulSpeed: 0.2,
     /** A won ball is poked this fast (m/s, ±30%) at this angle (degrees, ± spread) off the tackle's line. */
     pokeSpeed: 3.5,
     pokeAngle: 25,

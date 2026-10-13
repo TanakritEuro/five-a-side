@@ -56,9 +56,10 @@ describe('soak: a frantic player for 90 s', () => {
 });
 
 /** Longest a player may stay in each AI state before it counts as stuck (s). */
-const STUCK: Partial<Record<AiState['kind'], number>> = { chase: 15, dribble: 25, press: 30, takeRestart: 5, dive: 4, holding: 5 };
+const STUCK: Partial<Record<AiState['kind'], number>> = { chase: 15, dribble: 25, press: 30, takeRestart: 5, dive: 4, holding: 5, wall: 6 };
 const goalsFor = [0, 0];
 const normalGoals: number[] = [];
+const fouls: number[] = [];
 
 describe('soak: whole AI-vs-AI matches', () => {
   it.each([
@@ -73,10 +74,20 @@ describe('soak: whole AI-vs-AI matches', () => {
     const ai = sim.ai!;
     let lastOwnerTeam: 0 | 1 | null = null;
     let turnovers = 0;
+    let tackles = 0;
+    let won = 0;
+    let fouled = 0;
     // Two halves of play, plus generous time for stoppages.
     const limit = (2 * TUNING.match.halfLength + 240) * STEPS_PER_SECOND;
     for (let i = 0; i < limit && !sim.match.over; i++) {
-      sim.step([]);
+      for (const e of sim.step([])) {
+        if (e.type === 'tackle') tackles++;
+        if (e.type === 'tackle' && e.outcome === 'won') won++;
+        if (e.type === 'foul') fouled++;
+      }
+      // A restart is always taken: the AI waits for a wall at most `aiWallWait`.
+      const phase = sim.match.phase;
+      if (phase.kind === 'restart') expect(phase.elapsed, `${phase.restart.kind} not taken`).toBeLessThan(TUNING.match.aiWallWait + 2);
       const b = sim.ball.translation();
       for (const n of [b.x, b.y, b.z]) expect(Number.isFinite(n)).toBe(true);
       for (const p of sim.players) expect(Number.isFinite(p.pos.x + p.pos.z + p.facing)).toBe(true);
@@ -95,6 +106,11 @@ describe('soak: whole AI-vs-AI matches', () => {
     }
     expect(sim.match.over).toBe(true);
     expect(turnovers).toBeGreaterThan(10);
+    // Players tackle, and win the ball some of the time but not always.
+    expect(tackles).toBeGreaterThan(8);
+    expect(won).toBeGreaterThan(tackles * 0.2);
+    expect(won).toBeLessThan(tackles * 0.9);
+    fouls.push(fouled);
     goalsFor[0] += sim.match.score[0];
     goalsFor[1] += sim.match.score[1];
     if (home === 'normal' && away === 'normal') normalGoals.push(sim.match.score[0] + sim.match.score[1]);
@@ -103,6 +119,14 @@ describe('soak: whole AI-vs-AI matches', () => {
   it('sees both teams score across the matches', () => {
     expect(goalsFor[0]).toBeGreaterThan(0);
     expect(goalsFor[1]).toBeGreaterThan(0);
+  });
+
+  it('gives a sensible number of fouls: some in most matches, never a flood', () => {
+    expect(fouls).toHaveLength(6);
+    const mean = fouls.reduce((a, b) => a + b, 0) / fouls.length;
+    expect(mean).toBeGreaterThanOrEqual(1);
+    expect(mean).toBeLessThanOrEqual(8);
+    expect(Math.max(...fouls)).toBeLessThanOrEqual(12);
   });
 
   it('averages 3–7 goals a match between two normal teams', () => {

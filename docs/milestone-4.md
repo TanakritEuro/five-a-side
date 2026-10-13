@@ -1,5 +1,38 @@
 # Milestone 4 plan: contests
 
+## Status: done
+
+Decided with you before starting: a new `strength` rating; every foul stops play (no
+advantage, cards or accumulated fouls); penalties aimed by turning with A/D, then K; the
+AI forms a small wall at free kicks within 12 m of goal.
+
+Results (`npm run stats`, normal v normal, 16 seeds): 4.4 goals, 31 tackles (58% won)
+and 2.6 fouls a match, about 160 turnovers. Levels still order: hard 28–11 easy, hard
+34–20 normal, normal 31–17 easy (8 seeds each). AI penalties go in about 60% of the time.
+
+Where the build differs from the plan below:
+
+- **The lunge aims itself.** A tackle goes at the ball if it's within 2.2 m and 60° of
+  the way the tackler faces, so a human doesn't have to line up exactly.
+- **Shoulder challenges can win the ball.** Splitting the push by weight alone changed
+  nothing: the shoved carrier just steered back to the ball, since nobody may touch an
+  owned ball. Now the heavier player also shoves the other off their line, and a
+  challenger with the ball at their feet, nearer it than the carrier, takes it. This
+  brought tackles down from about 40 to 30 a match, and goals from 7.3 back to 5.3 (8
+  seeds), since the ball now changes hands before anyone has to lunge.
+- **AI pressers** go in when their estimated win chance clears the level's threshold
+  (easy 0.2, normal 0.35, hard 0.4), at a rate per second set by the level, and not from
+  behind unless the carrier is within 10 m of goal.
+- **AI free-kick takers** wait (up to 3 s) for the other team's wall to set before
+  deciding; at first they struck it before the wall arrived.
+- **Fouls only come from tackles.** A shoulder challenge is never a foul.
+- **Fixed on the way:** a keeper's dive planned just before the half-time whistle was
+  never made and left them in the dive state all through the break; unmade dives are now
+  called off when the ball goes dead.
+- **Not done:** the `?debug` tackle cone (labels show `TACKLE` / `recover` instead), the
+  recovery shown on the stamina bar, and the AI's dribble utility reacting to a presser
+  in tackling range. Carriers already release the ball sooner because tackles win it.
+
 Goal: the ball can be won as well as intercepted. Standing tackles succeed or fail on
 angle, timing and ratings; a tackle that misses the ball can be a foul. Players lean on
 each other in shoulder challenges. Tackles knock the ball loose. A first touch can be

@@ -25,7 +25,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1–3 done (plans and notes in `docs/milestone-1.md` … `docs/milestone-3.md`).
+Milestones 1–4 done (plans and notes in `docs/milestone-1.md` … `docs/milestone-4.md`).
 A full five-a-side match against a team AI: ten players, the human on the home team
 (`?aivsai` to watch two AI teams, `?difficulty=easy|normal|hard` for the opposition).
 There is a kick-off, a clock that stops when the ball is dead, two 3-minute halves with
@@ -40,10 +40,19 @@ the ends swapped, and full time. Kick-ins and goal clearances have a taker.
   level-dependent noise and reaction. Levels also shift ratings and the brain's pace.
 - **Keepers:** ported from the penalty game. They dive for shots (read or guess),
   catch or parry, hold the ball in their hands, and throw or roll it out.
+- **Contests** (`sim/tackle.ts`, `separation.ts`): K tackles when the other team has the
+  ball (a short lunge, then a recovery). The chance depends on angle, timing (the ball off
+  the carrier's feet) and `tackling` against `strength` and `passing`. A missed tackle
+  can be a foul, more likely from behind and at speed. Opponents in contact share the
+  push by weight (`strength`, momentum), and a shoulder challenge on the carrier can win
+  the ball. First touches get heavier with a harder ball and a poorer `passing` rating.
+- **Fouls:** a direct free kick on the spot, opponents 4 m away, with an AI wall of two
+  within 12 m of goal; or a penalty for a foul in the defending goal area, which you aim
+  by turning with A/D before holding K.
 
-AI vs AI at normal averages about 5 goals a match; hard beats normal beats easy (the
-soak and difficulty tests hold these). `npm run stats` prints match statistics for
-tuning. Nobody tackles yet; Milestone 4 is next.
+AI vs AI at normal averages about 4.5 goals, 30 tackles (55–60% won) and 2–3 fouls a
+match; hard beats normal beats easy (the soak and difficulty tests hold these). `npm run
+stats` prints match statistics for tuning. Milestone 5 (characters) is next.
 
 Things that aren't obvious from the code:
 - Rapier clamps angular velocity to a quarter turn per step (47 rad/s at 60 Hz). The ball
@@ -76,6 +85,12 @@ Things that aren't obvious from the code:
   frames). Claude in Chrome renders reliably for visual checks.
 - The Vite dev server sometimes keeps a stale module after big refactors (errors about
   missing exports that exist). Restart it.
+- Mulberry32's first number from small neighbouring seeds (1, 2, 3…) is far from uniform.
+  A test whose outcome hangs on the sim's first roll (a tackle in a fresh sim, say) spreads
+  its seeds out (`seed * 104729`), or the statistics come out skewed.
+- With `?debug` the game is on `window.game`; `game.sim.match.foul({ kind: 'penalty', … })`
+  sets up a set piece to look at. The page doesn't advance while a Chrome
+  `javascript_tool` call is awaiting, so take screenshots between calls instead.
 
 ## The game
 
@@ -182,10 +197,11 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/sim/command.ts`, `events.ts` — what drives players, and what the sim reports.
 - `src/sim/player.ts`, `locomotion.ts` — player state and attributes; the movement model.
 - `src/sim/possession.ts`, `dribble.ts`, `kick.ts` — who has the ball; touches, traps and first touches; passes and shots.
+- `src/sim/tackle.ts` — standing tackles: the lunge, the win and foul chances, the poke loose.
 - `src/sim/match.ts` — `Match`: the match-phase state machine, clock, halves and score.
-- `src/sim/rules.ts`, `restarts.ts` — goals and ball out; restart takers and where everyone stands.
+- `src/sim/rules.ts`, `restarts.ts` — goals, ball out, fouls (free kick or penalty), the goal area; restart takers and where everyone stands.
 - `src/sim/control.ts` — `HumanControl`: which player the keyboard drives, switching, context buttons.
-- `src/sim/separation.ts` — players pushed apart so capsules never overlap.
+- `src/sim/separation.ts` — players pushed apart so capsules never overlap; shoulder challenges.
 - `src/ai/ai.ts` — `Ai`: runs the team brains and turns each player's state into a `Command`.
 - `src/ai/brain.ts`, `support.ts` — phase of play and roles; support-spot scoring and assignment.
 - `src/ai/states.ts`, `onball.ts`, `decide.ts`, `keeper.ts` — off-ball behaviours, the carrier's plans, utility decisions, keeper dives and distribution.
