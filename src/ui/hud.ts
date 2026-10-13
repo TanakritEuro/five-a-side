@@ -22,7 +22,7 @@ export class Hud {
     root: HTMLElement,
     hint: string,
     /** The teams' short names, home first. */
-    private readonly names: readonly [string, string],
+    private names: readonly [string, string],
   ) {
     this.hint = hint;
     this.scoreboard = el(root, 'div', 'scoreboard');
@@ -55,6 +55,10 @@ export class Hud {
   setClock(half: 1 | 2, remaining: number): void {
     const s = Math.max(0, Math.ceil(remaining));
     this.clock.textContent = `${half}H ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  setTeams(names: readonly [string, string]): void {
+    this.names = names;
   }
 
   /** The replay banner: its caption, or null to hide it. */

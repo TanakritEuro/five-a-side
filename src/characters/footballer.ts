@@ -19,6 +19,8 @@ export interface Figure {
   update(view: PlayerView, dt: number): void;
   /** Forget the animation's history (stride, moods): a cut to other footage. */
   reset(): void;
+  /** Free what this figure owns (it's leaving the scene). */
+  dispose(): void;
 }
 
 /** Skin tones, given out by player id (invented players, a mix of faces). */
@@ -68,6 +70,16 @@ abstract class RiggedFigure implements Figure {
 
   reset(): void {
     this.animator = new Animator();
+  }
+
+  dispose(): void {
+    this.object.removeFromParent();
+    this.object.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose();
+      // A skinned model's geometry is shared with the loaded template; the rig's own is not.
+      if (!(o instanceof THREE.SkinnedMesh)) o.geometry.dispose();
+    });
   }
 
   /** Show `pose`, with a recorded clip blended over it. */
