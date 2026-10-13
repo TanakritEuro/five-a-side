@@ -9,8 +9,8 @@ export type Phase =
   /** Ball on the spot for a kick-off or set piece; waits for `taker` to kick it. */
   | { kind: 'restart'; restart: Restart; taker: number | null; elapsed: number }
   | { kind: 'playing' }
-  /** The ball is in the net; kick-off after `goalDelay`. */
-  | { kind: 'goal'; team: 0 | 1; timer: number }
+  /** The ball is in the net; kick-off after `goalDelay`. `scorer` is null for an own goal. */
+  | { kind: 'goal'; team: 0 | 1; scorer: number | null; timer: number }
   /** The ball went over the netting; set piece after `outDelay`. */
   | { kind: 'out'; restart: Restart; timer: number }
   /** The referee has blown for a foul; free kick or penalty after `foulDelay`. */
@@ -84,8 +84,9 @@ export class Match {
           if (!inGoal(ball, end)) continue;
           const team: 0 | 1 = this.attackDir(0) === end ? 0 : 1;
           this.score[team]++;
-          this.phase = { kind: 'goal', team, timer: T.match.goalDelay };
-          events.push({ type: 'goal', team, end, score: [this.score[0], this.score[1]] });
+          const scorer = ctx.lastTouchTeam === team ? ctx.lastTouch : null;
+          this.phase = { kind: 'goal', team, scorer, timer: T.match.goalDelay };
+          events.push({ type: 'goal', team, end, score: [this.score[0], this.score[1]], scorer });
           return null;
         }
         if (outOfCage(ball)) {

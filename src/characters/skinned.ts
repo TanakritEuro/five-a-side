@@ -63,6 +63,8 @@ interface BoneState {
   /** This frame: the bone's wanted rotation in rig-root space, and the clip's local rotation. */
   want: THREE.Quaternion;
   clip: THREE.Quaternion;
+  /** Part of the right leg (thigh down). */
+  rightLeg: boolean;
 }
 
 export interface ClipBlend {
@@ -71,6 +73,8 @@ export interface ClipBlend {
   time: number;
   /** 0: pure procedural pose, 1: pure clip. */
   weight: number;
+  /** The weight for the right leg's bones instead, if different (a dribble touch takes the leg over). */
+  rightLeg?: number;
 }
 
 const scratch = new THREE.Quaternion();
@@ -187,7 +191,7 @@ export class SkinnedFigure {
         s.want.multiplyQuaternions(parentRel, s.restLocal);
       }
       scratch.copy(parentRel).invert().multiply(s.want);
-      if (sampled) scratch.slerp(s.clip, clip.weight);
+      if (sampled) scratch.slerp(s.clip, s.rightLeg && clip.rightLeg !== undefined ? clip.rightLeg : clip.weight);
       s.bone.quaternion.copy(scratch);
     }
 
@@ -260,6 +264,7 @@ export class SkinnedFigure {
         restLocal: parentRest.clone().invert().multiply(boneRest),
         want: new THREE.Quaternion(),
         clip: new THREE.Quaternion(),
+        rightLeg: bone.name === 'thigh_r' || (parentIndex >= 0 && this.bones[parentIndex].rightLeg),
       });
     }
   }

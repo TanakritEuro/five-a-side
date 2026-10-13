@@ -107,6 +107,13 @@ export class Ai {
   private assign(sim: Sim, p: Player): AiState {
     const owner = sim.possession.owner;
     const plan = this.planOf(p.team);
+    const phase = sim.match.phase;
+    if (phase.kind === 'goal') {
+      if (p.team !== phase.team) return { kind: 'dejected' };
+      if (p.id === phase.scorer) return { kind: 'celebrate', to: null };
+      if (phase.scorer !== null && !p.keeper) return { kind: 'celebrate', to: phase.scorer };
+      return { kind: 'hold' };
+    }
     if (p.id === sim.match.taker) {
       const current = this.states[p.id];
       return current?.kind === 'takeRestart' ? current : { kind: 'takeRestart', plan: null };

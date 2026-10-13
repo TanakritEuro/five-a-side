@@ -165,7 +165,7 @@ export class KeeperFigure extends RiggedFigure {
       }
     }
     // Kicks, throws and rolls on top, unless they're diving.
-    if (!diving) pose = this.animator.actions(view, pose);
+    if (!diving) pose = this.animator.actions(view, pose).pose;
     this.show(pose);
   }
 }

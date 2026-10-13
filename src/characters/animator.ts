@@ -3,9 +3,12 @@ import { actionAge, type PlayerView } from '../render/interpolate';
 import { blendPoses, type Pose } from './rig';
 import type { ClipBlend } from './skinned';
 import {
+  armsOf,
   BRACE,
+  celebratePose,
   clamp01,
   cyclePose,
+  DEJECTED,
   FOLLOW,
   gaitStyle,
   JOG_CLIP,
@@ -50,6 +53,8 @@ const TELEPORT = 1.5;
  *   while it's charged, then the strike and follow-through; a side-foot pass; a trap; a
  *   dribble touch; a tackle's lunge; bracing in a shoulder challenge; a keeper's throw
  *   or roll.
+ * - After a goal, the scoring team celebrates (the scorer dances once they stop) and the
+ *   other team puts their hands on their heads.
  */
 export class Animator {
   /** Stride phase (rad), advancing 2π per stride. */
@@ -61,6 +66,9 @@ export class Animator {
   /** Smoothed turn rate (rad/s) and acceleration (m/s²). */
   private turn = 0;
   private accel = 0;
+  /** How far into the current mood's pose (0–1): eased in and out. */
+  private moodWeight = 0;
+  private lastMood: PlayerView['mood'] = null;
 
   step(view: PlayerView, dt: number): Frame {
     this.advance(view, dt);
@@ -70,16 +78,37 @@ export class Animator {
 
     // Leaning: forward into acceleration, back a touch when braking.
     nudge(pose, 'spine', { x: Math.max(-0.12, Math.min(0.15, this.accel * 0.02)) });
-    pose = this.actions(view, pose);
+    const act = this.actions(view, pose);
+    pose = act.pose;
 
     // Jogging, the recorded jog plays in step; standing, the recorded idle.
     const jogness = go * clamp01(1 - Math.abs(style - 1) * 1.6);
-    const clip: ClipBlend | undefined =
+    let clip: ClipBlend | undefined =
       jogness > 0.05
         ? { name: JOG_CLIP.name, time: jogClipTime(this.phase), weight: 0.85 * jogness }
         : go < 0.5
           ? { name: 'Idle_Loop', time: view.now, weight: 1 - go * 2 }
           : undefined;
+
+    // After a goal: the scorer dances once they've stopped (arms up while they run), their
+    // teammates throw their arms up, the other team puts their hands on their heads.
+    if (view.mood) this.lastMood = view.mood;
+    this.moodWeight = clamp01(this.moodWeight + (view.mood ? dt : -dt) * 4);
+    const mood = this.lastMood ? this.moodWeight : 0;
+    if (mood > 0) {
+      if (this.lastMood === 'dejected') {
+        pose = blendPoses(pose, go > 0.5 ? armsOf(DEJECTED) : DEJECTED, mood);
+      } else {
+        pose = blendPoses(pose, armsOf(celebratePose(view.now)), mood);
+      }
+    }
+    // The idle and jog clips pose the whole body: they give way to an action or a mood, or
+    // they'd hide it (a dribble touch only needs the right leg).
+    if (clip) {
+      clip.weight *= (1 - act.weight) * (1 - mood);
+      clip.rightLeg = clip.weight * (1 - act.leg);
+    }
+    if (this.lastMood === 'scorer' && mood > 0 && go < 0.5) clip = { name: 'Dance_Loop', time: view.now, weight: mood * (1 - go * 2) };
 
     // Bank into the turn: turning right (heading increasing) rolls them to their right.
     const bank = Math.max(-0.35, Math.min(0.35, -this.turn * view.speed * 0.03));
@@ -116,40 +145,55 @@ export class Animator {
     this.accel = 0;
   }
 
-  /** Lay the player's current action over `pose` (the gait, or a keeper's stance). */
-  actions(view: PlayerView, pose: Pose): Pose {
+  /**
+   * Lay the player's current action over `pose` (the gait, or a keeper's stance).
+   * `weight` is how much of the body the action has taken over (0–1), `leg` how much of
+   * the right leg alone.
+   */
+  actions(view: PlayerView, base: Pose): { pose: Pose; weight: number; leg: number } {
     const age = actionAge(view);
     const kind = age >= -0.02 ? view.action?.kind : undefined;
+    let pose = base;
+    let weight = 0;
+    const over = (target: Pose, w: number) => {
+      if (w <= 0) return;
+      pose = blendPoses(pose, target, w);
+      weight = Math.max(weight, w);
+    };
     // A shot being charged: the leg comes back.
-    if (view.charge > 0) pose = blendPoses(pose, WINDUP, 0.75 * smoothstep(0, 0.35, view.charge));
+    if (view.charge > 0) over(WINDUP, 0.75 * smoothstep(0, 0.35, view.charge));
     // Lunging in a tackle, and getting back up once it's resolved and over.
-    const lunge = view.tackle >= 0 ? smoothstep(0, 0.08, view.tackle) : kind === 'tackle' ? 1 - smoothstep(0.23, 0.6, age) : 0;
-    if (lunge > 0) pose = blendPoses(pose, LUNGE, lunge);
+    over(LUNGE, view.tackle >= 0 ? smoothstep(0, 0.08, view.tackle) : kind === 'tackle' ? 1 - smoothstep(0.23, 0.6, age) : 0);
     switch (kind) {
       case 'shot':
-        return blendPoses(pose, blendPoses(STRIKE, FOLLOW, smoothstep(0, 0.25, age)), 1 - smoothstep(0.35, 0.65, age));
+        over(blendPoses(STRIKE, FOLLOW, smoothstep(0, 0.25, age)), 1 - smoothstep(0.35, 0.65, age));
+        break;
       case 'pass':
-        return blendPoses(pose, SIDEFOOT, 1 - smoothstep(0.12, 0.4, age));
+        over(SIDEFOOT, 1 - smoothstep(0.12, 0.4, age));
+        break;
       case 'receive':
-        return blendPoses(pose, TRAP, 1 - smoothstep(0.1, 0.35, age));
+        over(TRAP, 1 - smoothstep(0.1, 0.35, age));
+        break;
       case 'challenge':
-        return blendPoses(pose, BRACE, smoothstep(0, 0.08, age) * (1 - smoothstep(0.3, 0.6, age)));
+        over(BRACE, smoothstep(0, 0.08, age) * (1 - smoothstep(0.3, 0.6, age)));
+        break;
       case 'throw':
-        return blendPoses(pose, THROW, 1 - smoothstep(0.25, 0.6, age));
+        over(THROW, 1 - smoothstep(0.25, 0.6, age));
+        break;
       case 'roll':
-        return blendPoses(pose, ROLL, 1 - smoothstep(0.25, 0.6, age));
+        over(ROLL, 1 - smoothstep(0.25, 0.6, age));
+        break;
       case 'touch': {
         // The right foot flicks out at the ball and back.
         const T = 0.28;
-        if (age > T) return pose;
+        if (age > T) break;
         const w = Math.sin((Math.PI * Math.max(0, age)) / T);
         nudge(pose, 'hipR', { x: 0.45 * w });
         nudge(pose, 'kneeR', { x: -0.25 * w });
         nudge(pose, 'ankleR', { x: -0.3 * w });
-        return pose;
+        return { pose, weight, leg: w };
       }
-      default:
-        return pose;
     }
+    return { pose, weight, leg: 0 };
   }
 }

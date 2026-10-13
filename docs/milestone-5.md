@@ -1,5 +1,33 @@
 # Milestone 5 plan: characters
 
+## Status: done
+
+Decided with you before starting: the existing clips plus procedural poses, the
+region-coloured kit, full goal celebrations, and no shirt numbers yet.
+
+Cost (Chrome, measured with all ten figures): posing them takes about 0.8 ms a frame
+and rendering about 4 ms, well inside 60 fps. The ported figure's update reuses its
+objects, so no further performance pass was needed.
+
+Where the build differs from the plan below:
+
+- **Nobody walks back for the kick-off after a goal.** The celebration plays during the
+  goal delay: the scorer runs off towards the touchline and dances once stopped, their
+  teammates run to them with arms up, and the other team puts their hands on their
+  heads. Then the kick-off still puts everyone on their spots at once. Walking back is a
+  simulation change (restart timing, the human's player, the soak tests), and M6's goal
+  replay will cut over that moment anyway.
+- **The clips give way.** The idle and jog clips pose the whole body, so at first they
+  hid every kick, trap, tackle and hands-on-head under them. The rig-level tests passed
+  anyway; I only caught it on screen. Now the clip's weight drops wherever an action or
+  mood shows (just the right leg for a dribble touch), and a test checks the clip itself.
+- **The gait style depends on speed alone**, not the sprint button; the button made the
+  pose jump.
+- **The kit's regions** come from bind-pose heights of the Mannequin: hips 0.93, knees
+  0.53, ankles 0.10, elbows 0.47 and wrists 0.74 out along the arm (model units).
+- **Not done:** keepers don't celebrate or despair (they stay in their stance), and
+  all kicks are right-footed.
+
 Goal: the capsules become footballers. Ten Quaternius Mannequins (from the penalty game)
 run, sprint, turn, dribble, pass, shoot, receive, tackle, barge and celebrate, and the
 keepers dive, catch and throw, all timed to what the simulation does. Each team wears

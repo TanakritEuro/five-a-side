@@ -89,3 +89,20 @@ describe('snapshots for animation', () => {
     expect(['throw', 'roll']).toContain(sim.curr.players[1].action?.kind);
   });
 });
+
+describe('goals', () => {
+  it('know the scorer, and set the moods: scorer, celebrating teammates, dejected opponents', async () => {
+    const players = [at(0, 'pivot', 14, 0), at(0, 'left', 5, 5), at(1, 'defender', 8, -5, Math.PI), at(1, 'keeper', HALF_LENGTH - 0.5, 6, Math.PI)];
+    const sim = await Sim.create({ seed: 1, players, ai: true });
+    // The home pivot rolls it into an empty net.
+    sim.possession.kick(0);
+    sim.ball.setTranslation({ x: 15, y: BALL_RADIUS, z: 0 }, true);
+    sim.ball.setLinvel({ x: 9, y: 0, z: 0 }, true);
+    sim.ball.setAngvel(rollingSpin(9, 0), true);
+    const goal = until(sim, 'goal', () => []);
+    expect(goal).toMatchObject({ team: 0, scorer: 0 });
+    expect(sim.curr.players.map((p) => p.mood)).toEqual(['scorer', 'celebrate', 'dejected', 'dejected']);
+    sim.step([]);
+    expect(sim.ai!.states.map((s) => s.kind)).toEqual(['celebrate', 'celebrate', 'dejected', 'dejected']);
+  });
+});

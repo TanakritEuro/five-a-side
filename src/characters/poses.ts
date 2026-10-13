@@ -274,3 +274,36 @@ export const ROLL: Pose = {
   },
   rootY: -0.35,
 };
+
+/** Arms up in celebration, bouncing with `time` (s). */
+export function celebratePose(time: number): Pose {
+  return {
+    joints: {
+      spine: { x: -0.12 },
+      neck: { x: -0.3 },
+      shoulderL: { z: -2.7 },
+      shoulderR: { z: 2.7 },
+      elbowL: { x: 0.2 },
+      elbowR: { x: 0.2 },
+    },
+    rootY: 0.06 * Math.abs(Math.sin(time * 7)),
+  };
+}
+
+/** Hands on head. */
+export const DEJECTED: Pose = {
+  joints: {
+    spine: { x: 0.2 },
+    neck: { x: 0.35 },
+    shoulderL: { x: 0.6, z: -2.2 },
+    shoulderR: { x: 0.6, z: 2.2 },
+    elbowL: { x: 2.1 },
+    elbowR: { x: 2.1 },
+  },
+};
+
+/** The arms of `pose` only (shoulders and elbows), for laying over a running body. */
+export function armsOf(pose: Pose): Pose {
+  const { shoulderL, shoulderR, elbowL, elbowR } = pose.joints;
+  return { joints: { shoulderL, shoulderR, elbowL, elbowR } };
+}

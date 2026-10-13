@@ -57,7 +57,11 @@ export interface PlayerSnapshot {
   holding: boolean;
   /** The last thing they did, and the `Snapshot.tick` of the first snapshot after it. */
   action: { kind: ActionKind; tick: number } | null;
+  /** After a goal: the scorer, their team celebrating, or the other team. */
+  mood: Mood;
 }
+
+export type Mood = 'scorer' | 'celebrate' | 'dejected' | null;
 
 /**
  * What the renderer needs from one step, so it can interpolate between two of them, and
@@ -442,7 +446,7 @@ export class Sim {
 
   private rulesContext(): RulesContext {
     const last = this.possession.lastTouch;
-    return { lastTouchTeam: last === null ? null : this.players[last].team, attackDir: (t) => this.attackDir(t) };
+    return { lastTouch: last, lastTouchTeam: last === null ? null : this.players[last].team, attackDir: (t) => this.attackDir(t) };
   }
 
   private apply(action: MatchAction, events: SimEvent[]): void {
@@ -487,6 +491,7 @@ export class Sim {
         tackle: -1,
         holding: false,
         action: null,
+        mood: null,
       })),
     };
   }
@@ -497,6 +502,9 @@ export class Sim {
     Object.assign(s.ball.pos, { x: p.x, y: p.y, z: p.z });
     Object.assign(s.ball.rot, { x: r.x, y: r.y, z: r.z, w: r.w });
     s.tick = this.tick;
+    const phase = this.match.phase;
+    const mood = (pl: Player): Mood =>
+      phase.kind !== 'goal' ? null : pl.id === phase.scorer ? 'scorer' : pl.team === phase.team ? 'celebrate' : 'dejected';
     this.players.forEach((pl, i) => {
       const pose = pl.keeper?.pose;
       Object.assign(s.players[i], {
@@ -512,6 +520,7 @@ export class Sim {
         tackle: pl.tackle?.kind === 'lunge' ? pl.tackle.elapsed : -1,
         holding: this.handling.holder === pl.id,
         action: this.actions[i] ?? null,
+        mood: mood(pl),
       });
     });
   }

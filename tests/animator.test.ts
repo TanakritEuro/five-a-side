@@ -136,3 +136,42 @@ describe('actions', () => {
     expect(hipR(at('shot', -0.1))).toBeCloseTo(hipR(emptyView()), 5);
   });
 });
+
+describe('moods', () => {
+  it('dances for the scorer once they stop, and puts hands on heads for the other team', () => {
+    const scorer = new Animator();
+    let frame = scorer.step({ ...emptyView(), mood: 'scorer' }, 1 / 60);
+    for (let i = 0; i < 30; i++) frame = scorer.step({ ...emptyView(), mood: 'scorer', now: i / 60 }, 1 / 60);
+    expect(frame.clip?.name).toBe('Dance_Loop');
+    expect(frame.clip!.weight).toBeGreaterThan(0.9);
+
+    const beaten = new Animator();
+    for (let i = 0; i < 30; i++) frame = beaten.step({ ...emptyView(), mood: 'dejected' }, 1 / 60);
+    expect(frame.pose.joints.elbowL?.x).toBeGreaterThan(1.8);
+    // And it eases back out after the kick-off.
+    for (let i = 0; i < 30; i++) frame = beaten.step(emptyView(), 1 / 60);
+    expect(frame.pose.joints.elbowL?.x).toBeLessThan(0.5);
+  });
+});
+
+describe('clips give way', () => {
+  it("to an action or a mood, so the recorded idle and jog don't hide them", () => {
+    // Standing, the idle clip has the whole body...
+    const idle = new Animator().step({ ...emptyView(), now: 5 }, 1 / 60);
+    expect(idle.clip?.name).toBe('Idle_Loop');
+    expect(idle.clip!.weight).toBe(1);
+    // ...until they strike the ball.
+    const shot = new Animator().step({ ...emptyView(), now: 5, action: { kind: 'shot', tick: 300 } }, 1 / 60);
+    expect(shot.clip?.weight ?? 0).toBeLessThan(0.01);
+    // A dribble touch takes over only the right leg.
+    const touch = new Animator().step({ ...emptyView(), now: 5, speed: 5, action: { kind: 'touch', tick: Math.round((5 - 0.14) * 60) } }, 1 / 60);
+    expect(touch.clip?.name).toBe('Jog_Fwd_Loop');
+    expect(touch.clip!.weight).toBeGreaterThan(0.5);
+    expect(touch.clip!.rightLeg!).toBeLessThan(0.05);
+    // Hands on heads.
+    const beaten = new Animator();
+    let frame = beaten.step({ ...emptyView(), mood: 'dejected' }, 1 / 60);
+    for (let i = 0; i < 30; i++) frame = beaten.step({ ...emptyView(), mood: 'dejected' }, 1 / 60);
+    expect(frame.clip?.weight ?? 0).toBeLessThan(0.01);
+  });
+});

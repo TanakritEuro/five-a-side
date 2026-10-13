@@ -1,5 +1,5 @@
 import { TUNING, type AiLevel } from '../config';
-import { PHYSICS_STEP } from '../constants';
+import { HALF_WIDTH, PHYSICS_STEP } from '../constants';
 import type { Rng, Vec2 } from '../math';
 import type { Command } from '../sim/command';
 import type { Player } from '../sim/player';
@@ -7,7 +7,7 @@ import type { Sim } from '../sim/sim';
 import { approach, winChance } from '../sim/tackle';
 import type { TeamPlan } from './brain';
 import { ballPos, goalSide, ownGoal, steer } from './geometry';
-import { arrive, insidePitch, pursue, seek, separate } from './steering';
+import { arrive, insidePitch, pursue, seek, separate, STAND } from './steering';
 
 /** What an AI player is doing. One state machine per player; see `Ai`. */
 export type AiState =
@@ -38,7 +38,11 @@ export type AiState =
   /** Taking a kick-off or set piece, once decided how (see onball.ts). */
   | { kind: 'takeRestart'; plan: RestartPlan | null }
   /** Standing in the wall at a free kick near our goal. */
-  | { kind: 'wall'; spot: Vec2 };
+  | { kind: 'wall'; spot: Vec2 }
+  /** We've scored: the scorer (`to` null) runs off towards the touchline, teammates run to them (`to`). */
+  | { kind: 'celebrate'; to: number | null }
+  /** They've scored: stand there. */
+  | { kind: 'dejected' };
 
 /** How an AI taker means to take a set piece: shoot at a corner (holding K for `hold` steps), or pass. */
 export type RestartPlan = { kind: 'shoot'; corner: 1 | -1; hold: number } | { kind: 'pass' };
@@ -93,6 +97,17 @@ export function offBall(sim: Sim, p: Player, state: AiState, plan: TeamPlan): Co
     }
     case 'keeper':
       return steer(arrive(p, keeperSpot(sim, p), 0.2));
+    case 'celebrate': {
+      if (state.to === null) {
+        // Off towards the nearer touchline.
+        const side = p.pos.z >= 0 ? 1 : -1;
+        return steer(seek(p, insidePitch({ x: p.pos.x, z: side * HALF_WIDTH }, 2), true));
+      }
+      const scorer = sim.players[state.to];
+      return steer(arrive(p, scorer.pos, 1));
+    }
+    case 'dejected':
+      return steer(STAND);
     case 'wall': {
       const s = arrive(p, state.spot, 0.1);
       return steer({ move: s.move, sprint: s.sprint || far(p, state.spot, 3) });

@@ -15,7 +15,7 @@ export interface PlayerView extends PlayerSnapshot {
 }
 
 export function emptyView(): PlayerView {
-  return { x: 0, z: 0, facing: 0, y: 0, lean: 0, arms: 0, speed: 0, sprinting: false, charge: 0, tackle: -1, holding: false, action: null, now: 0 };
+  return { x: 0, z: 0, facing: 0, y: 0, lean: 0, arms: 0, speed: 0, sprinting: false, charge: 0, tackle: -1, holding: false, action: null, mood: null, now: 0 };
 }
 
 /** Seconds since `view`'s last action, or Infinity if there wasn't one. */

@@ -27,8 +27,8 @@ export type SimEvent =
   | { type: 'woodwork'; part: Woodwork }
   /** A keeper got to the ball: caught it, or parried it. */
   | { type: 'save'; player: number; caught: boolean }
-  /** `team` scored in the goal at `end`. */
-  | { type: 'goal'; team: 0 | 1; end: GoalEnd; score: [number, number] }
+  /** `team` scored in the goal at `end`; `scorer` is who put it in (null for an own goal). */
+  | { type: 'goal'; team: 0 | 1; end: GoalEnd; score: [number, number]; scorer: number | null }
   /** The ball went over the netting. */
   | { type: 'out'; restart: Restart }
   /** The ball has been placed for a kick-off, kick-in or goal clearance, to be taken by `taker`. */

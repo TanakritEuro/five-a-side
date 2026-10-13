@@ -25,7 +25,7 @@ Requires Node 20.19+ or 22.12+ (Vite 8).
 
 ## Current state
 
-Milestones 1–4 done (plans and notes in `docs/milestone-1.md` … `docs/milestone-4.md`).
+Milestones 1–5 done (plans and notes in `docs/milestone-1.md` … `docs/milestone-5.md`).
 A full five-a-side match against a team AI: ten players, the human on the home team
 (`?aivsai` to watch two AI teams, `?difficulty=easy|normal|hard` for the opposition).
 There is a kick-off, a clock that stops when the ball is dead, two 3-minute halves with
@@ -49,10 +49,15 @@ the ends swapped, and full time. Kick-ins and goal clearances have a taker.
 - **Fouls:** a direct free kick on the spot, opponents 4 m away, with an AI wall of two
   within 12 m of goal; or a penalty for a foul in the defending goal area, which you aim
   by turning with A/D before holding K.
+- **Characters** (`src/characters/`): Quaternius Mannequins (ported with the penalty
+  game's rig) in region-coloured kits. Running blends walk, jog and sprint by speed, with
+  the jog clip in step. Kicks, passes, traps, tackles, challenges and keeper throws are
+  timed to the simulation. After a goal the scorers celebrate and the other team puts
+  their hands on their heads. Keepers follow the dive pose.
 
 AI vs AI at normal averages about 4.5 goals, 30 tackles (55–60% won) and 2–3 fouls a
 match; hard beats normal beats easy (the soak and difficulty tests hold these). `npm run
-stats` prints match statistics for tuning. Milestone 5 (characters) is next.
+stats` prints match statistics for tuning. Milestone 6 (presentation and polish) is next.
 
 Things that aren't obvious from the code:
 - Rapier clamps angular velocity to a quarter turn per step (47 rad/s at 60 Hz). The ball
@@ -78,6 +83,20 @@ Things that aren't obvious from the code:
   ball: dv/dt = −(R + c·v²) solves exactly. Kicks themselves still use the exact solver.
 - A keeper holding the ball is the one exception to "the ball is always a free body":
   `sim/handling.ts` pins it to their hands each step. Keepers act through `Command.dive`.
+- Animation reads only snapshots, never `Player`, so M6's replays can drive it. Each
+  `PlayerSnapshot` carries speed, shot charge, the tackle lunge, a keeper holding the
+  ball, a post-goal mood, and the last action stamped with the tick of the first snapshot
+  after it. An action's age is `view.now − tick × PHYSICS_STEP`, 0 on its contact frame.
+- The recorded clips (idle, jog, dance) pose the whole body. Wherever an action or mood
+  shows, the animator scales the clip down (a dribble touch only for the right leg).
+  Otherwise the procedural pose is invisible under the clip, while the rig-level tests
+  still pass.
+- The stride phase advances with distance, not time, and is lined up with the jog clip:
+  left foot down at phase 0. The clip jogs at about 5.3 m/s, 2.5 m a stride.
+- Kit colours come from each vertex's bind-pose height in the shader (`skinned.ts`), in
+  the Mannequin's own units. A different model needs new region thresholds.
+- To look at one moment in Chrome, step the sim from the console (`?debug`) up to it,
+  then set `game.options.timescale` low and screenshot.
 - AI tuning is done with `npm run stats` (`LEVELS=hard,easy SEEDS=1,2,3 WATCH=chase:10`);
   the levels in `TUNING.levels` were tuned so harder levels win, which isn't obvious:
   slower decisions and more noise can *help* (carrying the ball further before deciding).
@@ -212,15 +231,17 @@ The classic reference for this structure is Mat Buckland's "Simple Soccer" in
 - `src/team/teams.ts`, `lineup.ts` — invented teams and kits; who's on the pitch.
 - `src/game.ts` — `Game`: keyboard → `Sim` → interpolated render, HUD and camera.
 - `src/input/keyboard.ts` — keys to `Command`s (screen-relative movement).
-- `src/render/interpolate.ts`, `keeper.ts` — draws meshes between the last two steps; the posed keeper mesh.
+- `src/render/interpolate.ts` — each player's view between the last two steps (`PlayerView`), and the ball.
+- `src/characters/rig.ts`, `skinned.ts` — the procedural rig (ported) and the Mannequin it drives; the kit shader.
+- `src/characters/poses.ts`, `animator.ts` — gait cycles and action poses; per-player animation from views.
+- `src/characters/footballer.ts` — a footballer or keeper figure in kit, placed and posed each frame.
 - `src/ui/hud.ts`, `src/debug.ts` — score, status, power meter, stamina; `?debug` / `?stats` overlays.
-- `src/scene.ts` — renderer, lights, pitch, markings, walls, goals, placeholder player meshes.
+- `src/scene.ts` — renderer, lights, pitch, markings, walls, goals, the controlled-player marker.
 - `src/camera.ts` — broadcast camera that follows the controlled player and the ball.
 - `src/main.ts` — entry point; reads the URL flags.
 - `tests/` — Vitest. `helpers.ts` has a sim factory, command helpers and a random driver. `tests/stats/` is `npm run stats`.
 
-As the game grows, add `src/characters/`, `src/audio/`, `src/replay/` and the menus, as in
-the penalty game.
+As the game grows, add `src/audio/`, `src/replay/` and the menus, as in the penalty game.
 
 ## Conventions
 
@@ -269,7 +290,7 @@ code to this game's axes (goal lines on X, not Z) and keep the sim/presentation 
 | Done | Shot power curve, overpower drift, scatter | `src/shooting/power.ts`, `spin.ts` |
 | Done | Goal / woodwork outcome from contact events | `src/shooting/outcome.ts` |
 | Done | Keeper body, dive decision, reach limit | `src/keeper/` |
-| M5 | Humanoid rig, Quaternius Mannequin driver, model build script | `src/characters/rig.ts`, `skinned.ts`, `scripts/prepare-models.mjs`, `public/models/` |
+| Done | Humanoid rig, Quaternius Mannequin driver, model build script | `src/characters/rig.ts`, `skinned.ts`, `scripts/prepare-models.mjs`, `public/models/` |
 | M6 | Net ripple, ball trail | `src/net.ts`, `src/trail.ts` |
 | M6 | Synthesised crowd and sound effects | `src/audio/sound.ts` |
 | M6 | Recorder and replays, camera director | `src/replay/`, `src/camera/director.ts` |

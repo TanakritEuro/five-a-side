@@ -22,7 +22,8 @@ export interface Restart {
 }
 
 export interface RulesContext {
-  /** Team of the last player to touch the ball, or null. */
+  /** The last player to touch the ball and their team, or null. */
+  lastTouch: number | null;
   lastTouchTeam: 0 | 1 | null;
   attackDir: (team: 0 | 1) => 1 | -1;
 }
