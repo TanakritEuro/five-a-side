@@ -164,6 +164,8 @@ export class KeeperFigure extends RiggedFigure {
         pose.joints.elbowR = { x: 0 };
       }
     }
+    // Kicks, throws and rolls on top, unless they're diving.
+    if (!diving) pose = this.animator.actions(view, pose);
     this.show(pose);
   }
 }

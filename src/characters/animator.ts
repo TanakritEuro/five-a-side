@@ -2,7 +2,27 @@ import { wrapAngle } from '../math';
 import { actionAge, type PlayerView } from '../render/interpolate';
 import { blendPoses, type Pose } from './rig';
 import type { ClipBlend } from './skinned';
-import { clamp01, cyclePose, gaitStyle, JOG_CLIP, jogClipTime, moving, nudge, standPose, strideLength } from './poses';
+import {
+  BRACE,
+  clamp01,
+  cyclePose,
+  FOLLOW,
+  gaitStyle,
+  JOG_CLIP,
+  jogClipTime,
+  LUNGE,
+  moving,
+  nudge,
+  ROLL,
+  SIDEFOOT,
+  smoothstep,
+  standPose,
+  STRIKE,
+  strideLength,
+  THROW,
+  TRAP,
+  WINDUP,
+} from './poses';
 
 const TAU = 2 * Math.PI;
 
@@ -25,7 +45,11 @@ const TELEPORT = 1.5;
  * - The gait blends from standing through walk and jog to sprint by speed; jogging, the
  *   recorded jog clip plays in step with the stride.
  * - The body banks into turns and leans forward when accelerating.
- * - A dribble touch flicks the right foot at the ball.
+ * - Actions play over the gait, timed from the tick the snapshot stamped them with (so
+ *   a kick's contact pose lands on the step the ball left the foot): a shot's backswing
+ *   while it's charged, then the strike and follow-through; a side-foot pass; a trap; a
+ *   dribble touch; a tackle's lunge; bracing in a shoulder challenge; a keeper's throw
+ *   or roll.
  */
 export class Animator {
   /** Stride phase (rad), advancing 2π per stride. */
@@ -46,7 +70,7 @@ export class Animator {
 
     // Leaning: forward into acceleration, back a touch when braking.
     nudge(pose, 'spine', { x: Math.max(-0.12, Math.min(0.15, this.accel * 0.02)) });
-    pose = this.touches(view, pose);
+    pose = this.actions(view, pose);
 
     // Jogging, the recorded jog plays in step; standing, the recorded idle.
     const jogness = go * clamp01(1 - Math.abs(style - 1) * 1.6);
@@ -92,16 +116,40 @@ export class Animator {
     this.accel = 0;
   }
 
-  /** A dribble touch: the right foot flicks out at the ball and back. */
-  private touches(view: PlayerView, pose: Pose): Pose {
-    if (view.action?.kind !== 'touch') return pose;
+  /** Lay the player's current action over `pose` (the gait, or a keeper's stance). */
+  actions(view: PlayerView, pose: Pose): Pose {
     const age = actionAge(view);
-    const T = 0.28;
-    if (age < 0 || age > T) return pose;
-    const w = Math.sin((Math.PI * age) / T);
-    nudge(pose, 'hipR', { x: 0.45 * w });
-    nudge(pose, 'kneeR', { x: -0.25 * w });
-    nudge(pose, 'ankleR', { x: -0.3 * w });
-    return pose;
+    const kind = age >= -0.02 ? view.action?.kind : undefined;
+    // A shot being charged: the leg comes back.
+    if (view.charge > 0) pose = blendPoses(pose, WINDUP, 0.75 * smoothstep(0, 0.35, view.charge));
+    // Lunging in a tackle, and getting back up once it's resolved and over.
+    const lunge = view.tackle >= 0 ? smoothstep(0, 0.08, view.tackle) : kind === 'tackle' ? 1 - smoothstep(0.23, 0.6, age) : 0;
+    if (lunge > 0) pose = blendPoses(pose, LUNGE, lunge);
+    switch (kind) {
+      case 'shot':
+        return blendPoses(pose, blendPoses(STRIKE, FOLLOW, smoothstep(0, 0.25, age)), 1 - smoothstep(0.35, 0.65, age));
+      case 'pass':
+        return blendPoses(pose, SIDEFOOT, 1 - smoothstep(0.12, 0.4, age));
+      case 'receive':
+        return blendPoses(pose, TRAP, 1 - smoothstep(0.1, 0.35, age));
+      case 'challenge':
+        return blendPoses(pose, BRACE, smoothstep(0, 0.08, age) * (1 - smoothstep(0.3, 0.6, age)));
+      case 'throw':
+        return blendPoses(pose, THROW, 1 - smoothstep(0.25, 0.6, age));
+      case 'roll':
+        return blendPoses(pose, ROLL, 1 - smoothstep(0.25, 0.6, age));
+      case 'touch': {
+        // The right foot flicks out at the ball and back.
+        const T = 0.28;
+        if (age > T) return pose;
+        const w = Math.sin((Math.PI * Math.max(0, age)) / T);
+        nudge(pose, 'hipR', { x: 0.45 * w });
+        nudge(pose, 'kneeR', { x: -0.25 * w });
+        nudge(pose, 'ankleR', { x: -0.3 * w });
+        return pose;
+      }
+      default:
+        return pose;
+    }
   }
 }

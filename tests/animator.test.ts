@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Animator } from '../src/characters/animator';
-import { cyclePose, gaitStyle, strideLength } from '../src/characters/poses';
+import { cyclePose, FOLLOW, gaitStyle, STRIKE, strideLength } from '../src/characters/poses';
 import { JOINTS, type Pose } from '../src/characters/rig';
 import { emptyView, type PlayerView } from '../src/render/interpolate';
 
@@ -102,5 +102,37 @@ describe('animator', () => {
     const plain = new Animator().step(view, 1 / 60);
     const touched = new Animator().step({ ...view, action: { kind: 'touch', tick: Math.round((10 - 0.14) * 60) } }, 1 / 60);
     expect(touched.pose.joints.hipR!.x!).toBeGreaterThan(plain.pose.joints.hipR!.x! + 0.3);
+  });
+});
+
+describe('actions', () => {
+  const at = (kind: NonNullable<PlayerView['action']>['kind'], age: number, extra: Partial<PlayerView> = {}): PlayerView => ({
+    ...emptyView(),
+    now: 100,
+    action: { kind, tick: Math.round((100 - age) * 60) },
+    ...extra,
+  });
+  const hipR = (view: PlayerView) => new Animator().step(view, 1 / 60).pose.joints.hipR?.x ?? 0;
+
+  it("puts a shot's contact pose on the kick's tick, then follows through and lets go", () => {
+    expect(hipR(at('shot', 0))).toBeCloseTo(STRIKE.joints.hipR!.x!, 5);
+    expect(hipR(at('shot', 0.25))).toBeCloseTo(FOLLOW.joints.hipR!.x!, 5);
+    // Back to standing by 0.65 s.
+    expect(hipR(at('shot', 0.7))).toBeCloseTo(hipR(emptyView()), 5);
+  });
+
+  it('draws the leg back while a shot is charged', () => {
+    expect(hipR({ ...emptyView(), charge: 0.6 })).toBeLessThan(-0.4);
+  });
+
+  it('lunges while tackling and gets back up after', () => {
+    const lunging = hipR({ ...emptyView(), tackle: 0.15 });
+    expect(lunging).toBeGreaterThan(0.9);
+    expect(hipR(at('tackle', 0.1))).toBeGreaterThan(0.9);
+    expect(hipR(at('tackle', 0.7))).toBeCloseTo(hipR(emptyView()), 5);
+  });
+
+  it("doesn't show an action before it happens", () => {
+    expect(hipR(at('shot', -0.1))).toBeCloseTo(hipR(emptyView()), 5);
   });
 });

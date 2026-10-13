@@ -118,3 +118,159 @@ export function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = clamp01((x - edge0) / (edge1 - edge0));
   return t * t * (3 - 2 * t);
 }
+
+/*
+ * Actions, all with the right foot (or arm). Ported from the penalty game's kicker where
+ * they exist (windup, contact, follow-through).
+ */
+
+/** Shot coming: planted on the left foot, right leg drawn back, left arm out for balance. */
+export const WINDUP: Pose = {
+  joints: {
+    spine: { x: 0.08, z: 0.12 },
+    hipL: { x: 0.3 },
+    kneeL: { x: -0.4 },
+    ankleL: { x: 0.12 },
+    hipR: { x: -0.8 },
+    kneeR: { x: -1.8 },
+    ankleR: { x: -0.4 },
+    shoulderL: { x: 0.3, z: -0.95 },
+    shoulderR: { x: -0.4, z: 0.45 },
+    elbowL: { x: 0.4 },
+    elbowR: { x: 0.6 },
+  },
+  rootY: -0.05,
+};
+
+/** The boot meets the ball: right leg swinging through, toe pointed. */
+export const STRIKE: Pose = {
+  joints: {
+    spine: { x: -0.02, z: 0.1 },
+    hipL: { x: 0.15 },
+    kneeL: { x: -0.4 },
+    hipR: { x: 0.5 },
+    kneeR: { x: -0.3 },
+    ankleR: { x: -0.5 },
+    shoulderL: { x: 0.1, z: -1.05 },
+    shoulderR: { x: 0.5, z: 0.4 },
+    elbowL: { x: 0.3 },
+    elbowR: { x: 0.5 },
+  },
+  rootY: -0.05,
+};
+
+/** After the strike: the kicking leg high, the body leaning back over it. */
+export const FOLLOW: Pose = {
+  joints: {
+    spine: { x: -0.2, z: 0.05 },
+    hipL: { x: 0.0 },
+    kneeL: { x: -0.25 },
+    hipR: { x: 1.25 },
+    kneeR: { x: -0.15 },
+    ankleR: { x: -0.3 },
+    shoulderL: { x: -0.3, z: -1.1 },
+    shoulderR: { x: 0.8, z: 0.6 },
+    elbowL: { x: 0.3 },
+    elbowR: { x: 0.4 },
+  },
+};
+
+/** A side-foot pass: the right foot turned out and swung through, short and low. */
+export const SIDEFOOT: Pose = {
+  joints: {
+    spine: { x: 0.12 },
+    hipL: { x: 0.1 },
+    kneeL: { x: -0.35 },
+    hipR: { x: 0.55, y: -0.7 },
+    kneeR: { x: -0.35 },
+    ankleR: { x: 0.1 },
+    shoulderL: { x: 0.2, z: -0.5 },
+    shoulderR: { x: -0.2, z: 0.35 },
+    elbowL: { x: 0.4 },
+    elbowR: { x: 0.4 },
+  },
+  rootY: -0.04,
+};
+
+/** A first touch: the right sole up to meet the ball, knees soft. */
+export const TRAP: Pose = {
+  joints: {
+    spine: { x: 0.15 },
+    hipL: { x: 0.05 },
+    kneeL: { x: -0.4 },
+    hipR: { x: 0.45 },
+    kneeR: { x: -0.6 },
+    ankleR: { x: 0.45 },
+    shoulderL: { z: -0.4 },
+    shoulderR: { z: 0.4 },
+    elbowL: { x: 0.4 },
+    elbowR: { x: 0.4 },
+  },
+  rootY: -0.06,
+};
+
+/** A standing tackle: low on a bent left leg, the right leg stretched out at the ball. */
+export const LUNGE: Pose = {
+  joints: {
+    spine: { x: 0.35 },
+    hipL: { x: 0.55 },
+    kneeL: { x: -1.1 },
+    ankleL: { x: 0.4 },
+    hipR: { x: 1.0 },
+    kneeR: { x: -0.1 },
+    ankleR: { x: 0.3 },
+    shoulderL: { x: 0.5, z: -0.6 },
+    shoulderR: { x: -0.5, z: 0.6 },
+    elbowL: { x: 0.5 },
+    elbowR: { x: 0.5 },
+  },
+  rootY: -0.22,
+};
+
+/** Bracing in a shoulder challenge: low, arms out from the body, trunk forward. */
+export const BRACE: Pose = {
+  joints: {
+    spine: { x: 0.25 },
+    hipL: { x: 0.25, z: -0.15 },
+    hipR: { x: 0.25, z: 0.15 },
+    kneeL: { x: -0.55 },
+    kneeR: { x: -0.55 },
+    shoulderL: { x: 0.2, z: -0.7 },
+    shoulderR: { x: 0.2, z: 0.7 },
+    elbowL: { x: 0.9 },
+    elbowR: { x: 0.9 },
+  },
+  rootY: -0.08,
+};
+
+/** A keeper's overarm throw, just let go: the right arm swung over and forward. */
+export const THROW: Pose = {
+  joints: {
+    spine: { x: 0.25, z: 0.1 },
+    hipL: { x: 0.45 },
+    kneeL: { x: -0.4 },
+    hipR: { x: -0.3 },
+    kneeR: { x: -0.3 },
+    shoulderR: { x: 2.4, z: 0.2 },
+    elbowR: { x: 0.2 },
+    shoulderL: { x: 0.4, z: -0.6 },
+    elbowL: { x: 0.5 },
+  },
+};
+
+/** A keeper bowling it out along the ground: crouched, the right arm swept low and forward. */
+export const ROLL: Pose = {
+  joints: {
+    spine: { x: 0.65 },
+    hipL: { x: 1.0 },
+    kneeL: { x: -1.3 },
+    ankleL: { x: 0.4 },
+    hipR: { x: -0.1 },
+    kneeR: { x: -0.9 },
+    shoulderR: { x: 1.1, z: 0.15 },
+    elbowR: { x: 0.1 },
+    shoulderL: { x: 0.3, z: -0.5 },
+    elbowL: { x: 0.6 },
+  },
+  rootY: -0.35,
+};
