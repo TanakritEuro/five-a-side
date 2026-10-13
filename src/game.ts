@@ -23,6 +23,8 @@ import { Nets } from './net';
 import { BallTrail } from './trail';
 import { Recorder, type Clip } from './replay/recorder';
 import { Replay } from './replay/replay';
+import { cues, excitement } from './audio/cues';
+import { Sound } from './audio/sound';
 
 export interface GameOptions {
   seed: number;
@@ -38,7 +40,7 @@ export interface GameOptions {
   difficulty: LevelName;
 }
 
-const HINT = 'WASD: move · Shift: sprint · J: pass / switch · K: shoot (hold) / tackle · L: call a press · C: camera · R: replay';
+const HINT = 'WASD: move · Shift: sprint · J: pass / switch · K: shoot (hold) / tackle · L: call a press · C: camera · R: replay · M: mute';
 const RESTART_NAMES: Record<RestartKind, string> = {
   kickoff: 'Kick-off',
   kickIn: 'Kick-in',
@@ -73,6 +75,7 @@ export class Game {
   private readonly trail = new BallTrail();
   private readonly recorder = new Recorder();
   private readonly replay = new Replay();
+  private readonly sound = new Sound();
   /** A goal whose replay is waiting for the live cuts to finish: game seconds left, and the clip's details. */
   private pendingReplay: { wait: number; tick: number; team: 0 | 1; end: 1 | -1; caption: string } | null = null;
   /** Every goal's clip this match, for the highlights. */
@@ -108,11 +111,18 @@ export class Game {
     // Keys for the presentation rather than the players: C switches camera, R replays, and
     // any key skips a replay.
     window.addEventListener('keydown', (e) => {
+      // Browsers only allow audio after a key or a click.
+      this.sound.unlock();
       if (e.repeat) return;
       if (this.replay.active) this.endReplay();
       else if (e.code === 'KeyC') this.director.toggleMode();
       else if (e.code === 'KeyR') this.replayNow();
+      else if (e.code === 'KeyM') {
+        this.sound.setMuted(!this.sound.isMuted);
+        this.hud.flash(this.sound.isMuted ? 'Sound off' : 'Sound on', 1.2);
+      }
     });
+    for (const type of ['pointerdown', 'click', 'touchstart']) window.addEventListener(type, () => this.sound.unlock());
     this.view.scene.add(this.nets.object, this.trail.object);
     this.hud = new Hud(hudRoot, HINT);
     this.figures = sim.players.map((p) => {
@@ -189,6 +199,7 @@ export class Game {
     this.hud.update(controlled === null ? null : sim.players[controlled], dt, shotPower);
     this.hud.setClock(sim.match.clock.half, TUNING.match.halfLength - sim.match.clock.elapsed);
     this.debug?.update(sim, this.figures.map((f) => f.object), controlled);
+    this.sound.setExcitement(excitement(view.ball.position.x, sim.attackDir(this.control?.team ?? 0)));
     this.startReplays(gameDt);
   }
 
@@ -275,6 +286,9 @@ export class Game {
   /** React to what happened in the simulation (status text now; sound and animation later). */
   private onEvent(e: SimEvent): void {
     if (e.type === 'kick') this.debug?.showPath(e.path);
+    const v = this.sim.ball.linvel();
+    const context = { teamOf: (id: number) => this.sim.players[id].team, home: this.control?.team ?? 0, ballSpeed: Math.hypot(v.x, v.y, v.z) };
+    for (const s of cues(e, context)) this.sound.play(s);
     switch (e.type) {
       case 'goal': {
         this.hud.setScore(e.score[0], e.score[1]);
