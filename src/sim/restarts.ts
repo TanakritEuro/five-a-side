@@ -25,7 +25,7 @@ export function chooseTaker(players: readonly Player[], restart: Restart): numbe
   }
   const outfield = team.filter((p) => p.spec.role !== 'keeper');
   const pool = outfield.length > 0 ? outfield : team;
-  if (restart.kind === 'penalty') {
+  if (restart.kind === 'penalty' || restart.kind === 'shootout') {
     // The best shooter; the lowest id on a tie, so it's deterministic.
     return pool.reduce<Player | null>((best, p) => (!best || p.attrs.shooting > best.attrs.shooting ? p : best), null)?.id ?? null;
   }
@@ -47,7 +47,7 @@ export function chooseTaker(players: readonly Player[], restart: Restart): numbe
  */
 export function takerFacing(restart: Restart, attackDir: 1 | -1): number {
   if (restart.kind === 'kickIn') return Math.atan2(-Math.sign(restart.at.z), attackDir);
-  if (restart.kind === 'freeKick' || restart.kind === 'penalty') {
+  if (restart.kind === 'freeKick' || restart.kind === 'penalty' || restart.kind === 'shootout') {
     return Math.atan2(-restart.at.z, attackDir * HALF_LENGTH - restart.at.x);
   }
   return attackDir === 1 ? 0 : Math.PI;
@@ -82,7 +82,7 @@ export function holdRestartShape(
       continue;
     }
     const opponent = p.team !== restart.team;
-    if (restart.kind === 'penalty') {
+    if (restart.kind === 'penalty' || restart.kind === 'shootout') {
       const dir = attackDir(restart.team);
       if (opponent && p.spec.role === 'keeper') {
         p.pos.x = dir * (HALF_LENGTH - M.keeperOnLine);
@@ -128,6 +128,12 @@ export function placeForRestart(p: Player, restart: Restart, taker: number | nul
   } else if (restart.kind === 'kickoff') {
     const spot = kickoffSpot(p, half);
     placePlayer(p, spot.pos, spot.facing);
+  } else if (restart.kind === 'shootout') {
+    // The defending keeper goes in goal (holdRestartShape puts them on the line); everyone
+    // else waits on the halfway line, facing the kick.
+    const dir = restart.at.x > 0 ? 1 : -1;
+    if (p.keeper && p.team !== restart.team) placePlayer(p, { x: restart.at.x + dir * 5, z: 0 }, dir === 1 ? Math.PI : 0);
+    else placePlayer(p, { x: (p.team === 0 ? -0.6 : 0.6), z: (p.id - 4.5) * 1.4 }, dir === 1 ? 0 : Math.PI);
   } else {
     p.charge = null;
     p.pendingKick = null;

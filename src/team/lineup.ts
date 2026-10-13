@@ -1,6 +1,6 @@
 import { AVERAGE, type PlayerSpec } from '../sim/player';
 import { DIAMOND, slotPosition } from './formation';
-import { TEAMS } from './teams';
+import { TEAMS, type Team } from './teams';
 
 /** Milestone 1: just the home pivot, lined up for kick-off just behind the ball. */
 export function soloLineup(): PlayerSpec[] {
@@ -12,7 +12,7 @@ export function soloLineup(): PlayerSpec[] {
  * Both teams in the diamond, home (team 0, ids 0–4) attacking +X in the first half and
  * away (team 1, ids 5–9) attacking -X, each player rated from their team's squad.
  */
-export function fullLineup(): PlayerSpec[] {
+export function fullLineup(teams: readonly [Team, Team] = [TEAMS[0], TEAMS[1]]): PlayerSpec[] {
   return ([0, 1] as const).flatMap((team) => {
     const attackDir = team === 0 ? 1 : -1;
     return DIAMOND.map((slot) => ({
@@ -21,7 +21,7 @@ export function fullLineup(): PlayerSpec[] {
       slot,
       kickoff: slotPosition(slot, attackDir),
       kickoffFacing: attackDir === 1 ? 0 : Math.PI,
-      attrs: { ...AVERAGE, ...TEAMS[team].squad[slot.role] },
+      attrs: { ...AVERAGE, ...teams[team].squad[slot.role] },
     }));
   });
 }

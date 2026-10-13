@@ -7,7 +7,7 @@ import {
   KEEPER_SHOULDER_HEIGHT,
 } from '../constants';
 import type { PlayerView } from '../render/interpolate';
-import type { Team } from '../team/teams';
+import type { KitColours, Team } from '../team/teams';
 import { Animator } from './animator';
 import { cyclePose, gaitStyle, moving } from './poses';
 import { blendPoses, DEFAULT_DIMS, Rig, type Kit, type Pose, type RigDims } from './rig';
@@ -24,12 +24,13 @@ export interface Figure {
 /** Skin tones, given out by player id (invented players, a mix of faces). */
 const SKIN = [0xf1c7a5, 0xc68a62, 0x8d5a3b, 0xe2b08a, 0x5e3a26, 0xd9a47c, 0xa8704c, 0xf0c09a, 0x6f452d, 0xb98060];
 
-/** The kit for player `id` of `team`. */
-export function kitFor(team: Team, id: number, keeper: boolean): Kit {
+/** The kit for player `id` of `team`, which is wearing `colours` (its home or away kit). */
+export function kitFor(team: Team, colours: KitColours, id: number, keeper: boolean): Kit {
   const skin = SKIN[id % SKIN.length];
+  const k = team.keeper;
   return keeper
-    ? { shirt: team.keeperShirt, shorts: team.keeperShorts, socks: team.keeperSocks, boots: 0x111111, skin, hands: team.gloves, longSleeves: true }
-    : { shirt: team.shirt, shorts: team.shorts, socks: team.socks, boots: 0x111111, skin, hands: skin, longSleeves: false };
+    ? { shirt: k.shirt, shorts: k.shorts, socks: k.socks, boots: 0x111111, skin, hands: k.gloves, longSleeves: true }
+    : { ...colours, boots: 0x111111, skin, hands: skin, longSleeves: false };
 }
 
 /**

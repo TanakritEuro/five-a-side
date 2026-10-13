@@ -42,7 +42,9 @@ export type AiState =
   /** We've scored: the scorer (`to` null) runs off towards the touchline, teammates run to them (`to`). */
   | { kind: 'celebrate'; to: number | null }
   /** They've scored: stand there. */
-  | { kind: 'dejected' };
+  | { kind: 'dejected' }
+  /** A shootout, not taking this kick: stand where they've been put. */
+  | { kind: 'wait' };
 
 /** How an AI taker means to take a set piece: shoot at a corner (holding K for `hold` steps), or pass. */
 export type RestartPlan = { kind: 'shoot'; corner: 1 | -1; hold: number } | { kind: 'pass' };
@@ -107,6 +109,7 @@ export function offBall(sim: Sim, p: Player, state: AiState, plan: TeamPlan): Co
       return steer(arrive(p, scorer.pos, 1));
     }
     case 'dejected':
+    case 'wait':
       return steer(STAND);
     case 'wall': {
       const s = arrive(p, state.spot, 0.1);

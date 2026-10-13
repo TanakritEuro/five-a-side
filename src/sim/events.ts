@@ -35,5 +35,9 @@ export type SimEvent =
   | { type: 'restart'; restart: Restart; taker: number | null }
   /** The first half is over. */
   | { type: 'halfTime'; score: [number, number] }
-  /** The match is over. */
-  | { type: 'fullTime'; score: [number, number] };
+  /** The match is over; `shootout` is the shootout's tally if it went to one. */
+  | { type: 'fullTime'; score: [number, number]; shootout?: [number, number] }
+  /** A drawn cup tie goes to a penalty shootout. */
+  | { type: 'shootoutStart'; score: [number, number] }
+  /** A shootout kick by `team` went in or didn't; `tally` is the shootout score after it. */
+  | { type: 'shootoutKick'; team: 0 | 1; scored: boolean; tally: [number, number] };

@@ -17,7 +17,7 @@ import { HumanControl } from './sim/control';
 import { Sim } from './sim/sim';
 import type { Role } from './team/formation';
 import { fullLineup } from './team/lineup';
-import { TEAMS } from './team/teams';
+import { matchKits, TEAMS, type Team } from './team/teams';
 import { Hud } from './ui/hud';
 import { Nets } from './net';
 import { BallTrail } from './trail';
@@ -47,6 +47,7 @@ const RESTART_NAMES: Record<RestartKind, string> = {
   goalClearance: 'Goal clearance',
   freeKick: 'Free kick',
   penalty: 'Penalty',
+  shootout: 'Penalty shootout',
 };
 const TACKLE_NAMES: Record<TackleOutcome, string> = { won: 'Won it!', missed: 'Missed', foul: 'Foul' };
 const ROLE_NAMES: Record<Role, string> = { keeper: 'keeper', defender: 'defender', left: 'left wing', right: 'right wing', pivot: 'pivot' };
@@ -78,6 +79,8 @@ export class Game {
   private readonly sound = new Sound();
   /** A goal whose replay is waiting for the live cuts to finish: game seconds left, and the clip's details. */
   private pendingReplay: { wait: number; tick: number; team: 0 | 1; end: 1 | -1; caption: string } | null = null;
+  /** Who's playing, home first. */
+  private readonly teams: readonly [Team, Team] = [TEAMS[0], TEAMS[1]];
   /** Every goal's clip this match, for the highlights. */
   private readonly highlights: Clip[] = [];
   /** Game seconds until the full-time highlights start (null: not waiting). */
@@ -86,7 +89,7 @@ export class Game {
   static async create(canvas: HTMLCanvasElement, hudRoot: HTMLElement, options: GameOptions): Promise<Game> {
     const sim = await Sim.create({
       seed: options.seed,
-      players: fullLineup(),
+      players: fullLineup([TEAMS[0], TEAMS[1]]),
       ai: true,
       kickoff: true,
       levels: ['normal', options.difficulty],
@@ -124,9 +127,10 @@ export class Game {
     });
     for (const type of ['pointerdown', 'click', 'touchstart']) window.addEventListener(type, () => this.sound.unlock());
     this.view.scene.add(this.nets.object, this.trail.object);
-    this.hud = new Hud(hudRoot, HINT);
+    this.hud = new Hud(hudRoot, HINT, [this.teams[0].short, this.teams[1].short]);
+    const kits = matchKits(this.teams[0], this.teams[1]);
     this.figures = sim.players.map((p) => {
-      const kit = kitFor(TEAMS[p.team], p.id, p.keeper !== null);
+      const kit = kitFor(this.teams[p.team], kits[p.team], p.id, p.keeper !== null);
       const figure = p.keeper ? new KeeperFigure(template, kit) : new Footballer(template, kit);
       this.view.scene.add(figure.object);
       return figure;
@@ -135,6 +139,11 @@ export class Game {
     this.view.scene.add(this.marker);
     this.debug = options.debug ? new DebugOverlay(this.view.scene, hudRoot, this.view.camera) : null;
     this.stats = options.stats ? new StatsOverlay(hudRoot) : null;
+  }
+
+  /** "RIV 2 – 1 NGC". */
+  private scoreLine(score: [number, number]): string {
+    return `${this.teams[0].short} ${score[0]} – ${score[1]} ${this.teams[1].short}`;
   }
 
   /** The player the keyboard drives right now, or null (AI vs AI). */
@@ -197,7 +206,8 @@ export class Game {
     const team = this.control?.team ?? 0;
     this.director.update({ player: me?.position ?? null, ball: view.ball.position, attackDir: sim.attackDir(team) }, dt, dt * this.options.timescale);
     this.hud.update(controlled === null ? null : sim.players[controlled], dt, shotPower);
-    this.hud.setClock(sim.match.clock.half, TUNING.match.halfLength - sim.match.clock.elapsed);
+    if (sim.match.shootout) this.hud.setShootout(sim.match.shootout.goals);
+    else this.hud.setClock(sim.match.clock.half, sim.match.halfLength - sim.match.clock.elapsed);
     this.debug?.update(sim, this.figures.map((f) => f.object), controlled);
     this.sound.setExcitement(excitement(view.ball.position.x, sim.attackDir(this.control?.team ?? 0)));
     this.startReplays(gameDt);
@@ -295,9 +305,9 @@ export class Game {
         const scorer = e.scorer;
         this.director.goal(e.end, scorer === null ? null : () => this.figures[scorer].object.position);
         const clock = this.sim.match.clock;
-        const minute = Math.floor(((clock.half - 1) * TUNING.match.halfLength + clock.elapsed) / 60) + 1;
-        const who = scorer === null ? 'own goal' : `${TEAMS[this.sim.players[scorer].team].short} ${ROLE_NAMES[this.sim.players[scorer].spec.role]}`;
-        this.pendingReplay = { wait: TUNING.replay.delay, tick: this.sim.curr.tick, team: e.team, end: e.end, caption: `${scoreLine(e.score)} · ${who}, ${minute}′` };
+        const minute = Math.floor(((clock.half - 1) * this.sim.match.halfLength + clock.elapsed) / 60) + 1;
+        const who = scorer === null ? 'own goal' : `${this.teams[this.sim.players[scorer].team].short} ${ROLE_NAMES[this.sim.players[scorer].spec.role]}`;
+        this.pendingReplay = { wait: TUNING.replay.delay, tick: this.sim.curr.tick, team: e.team, end: e.end, caption: `${this.scoreLine(e.score)} · ${who}, ${minute}′` };
         this.hud.flash('GOAL!', TUNING.match.goalDelay);
         break;
       }
@@ -325,17 +335,23 @@ export class Game {
         if (e.player === this.controlled && e.outcome !== 'foul') this.hud.flash(TACKLE_NAMES[e.outcome], 0.8);
         break;
       case 'halfTime':
-        this.hud.flash(`Half time · ${scoreLine(e.score)}`, TUNING.match.halfTimePause);
+        this.hud.flash(`Half time · ${this.scoreLine(e.score)}`, TUNING.match.halfTimePause);
         break;
-      case 'fullTime':
+      case 'fullTime': {
         this.director.fullTime();
         this.highlightsIn = 2.5;
-        this.hud.flash(`Full time · ${scoreLine(e.score)}`, Infinity);
+        const pens = e.shootout ? ` · ${this.teams[e.shootout[0] > e.shootout[1] ? 0 : 1].short} win ${Math.max(...e.shootout)}–${Math.min(...e.shootout)} on penalties` : '';
+        this.hud.flash(`Full time · ${this.scoreLine(e.score)}${pens}`, Infinity);
+        break;
+      }
+      case 'shootoutStart':
+        this.hud.flash(`Full time · ${this.scoreLine(e.score)} · Penalties!`, TUNING.match.shootoutDelay);
+        break;
+      case 'shootoutKick':
+        this.hud.flash(`${this.teams[e.team].short} ${e.scored ? 'scores' : 'misses'} · ${e.tally[0]}–${e.tally[1]}`, TUNING.match.shootoutDelay);
         break;
     }
   }
 }
 
-function scoreLine(score: [number, number]): string {
-  return `${TEAMS[0].short} ${score[0]} – ${score[1]} ${TEAMS[1].short}`;
-}
+

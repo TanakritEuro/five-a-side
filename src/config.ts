@@ -455,6 +455,10 @@ export const TUNING = {
     outDelay: 1.5,
     /** Seconds between the whistle for a foul and the free kick or penalty. */
     foulDelay: 1.5,
+    /** Shootout: kicks each before sudden death, seconds between kicks, and the longest a kick can take. */
+    shootoutRounds: 3,
+    shootoutDelay: 2,
+    shootoutKickTime: 4,
     /** Opponents keep this far (m) from the ball at a kick-in or goal clearance... */
     setPieceDistance: 3,
     /** ...and at a free kick. */

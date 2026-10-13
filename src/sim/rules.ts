@@ -12,7 +12,7 @@ import {
 import { clamp, type Vec2, type Vec3 } from '../math';
 import type { GoalEnd } from '../physics';
 
-export type RestartKind = 'kickoff' | 'kickIn' | 'goalClearance' | 'freeKick' | 'penalty';
+export type RestartKind = 'kickoff' | 'kickIn' | 'goalClearance' | 'freeKick' | 'penalty' | 'shootout';
 
 /** How play starts again: what kind of restart, where the ball goes, and whose it is. */
 export interface Restart {
@@ -26,6 +26,8 @@ export interface RulesContext {
   lastTouch: number | null;
   lastTouchTeam: 0 | 1 | null;
   attackDir: (team: 0 | 1) => 1 | -1;
+  /** The ball's velocity (a shootout kick ends when it stops heading for goal). */
+  ballVel: Vec3;
 }
 
 /** Where a kick-in is taken from: this far in from the boards (m), room for the taker behind it... */

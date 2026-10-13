@@ -1,8 +1,13 @@
 import { inGoal } from '../ball/outcome';
 import { TUNING } from '../config';
+import { HALF_LENGTH, PENALTY_SPOT_DISTANCE } from '../constants';
 import type { Vec3 } from '../math';
 import type { SimEvent } from './events';
 import { outOfCage, restartAfterOut, type Restart, type RulesContext } from './rules';
+import { Shootout } from './shootout';
+
+/** Every kick of a shootout is taken at the goal at +X. */
+export const SHOOTOUT_END: 1 | -1 = 1;
 
 /** The match's state machine. */
 export type Phase =
@@ -16,7 +21,18 @@ export type Phase =
   /** The referee has blown for a foul; free kick or penalty after `foulDelay`. */
   | { kind: 'foul'; restart: Restart; timer: number }
   | { kind: 'halfTime'; timer: number }
+  /** Between shootout kicks (and before the first): the next kick is set up after `timer`. */
+  | { kind: 'shootoutPause'; timer: number }
   | { kind: 'fullTime' };
+
+export interface MatchOptions {
+  /** Start with a kick-off, rather than straight into open play (most unit tests). */
+  kickoff?: boolean;
+  /** Game seconds per half (default `TUNING.match.halfLength`). */
+  halfLength?: number;
+  /** A draw at full time goes to a penalty shootout (a cup tie). */
+  shootout?: boolean;
+}
 
 export interface Clock {
   half: 1 | 2;
@@ -41,18 +57,34 @@ export class Match {
   readonly score: [number, number] = [0, 0];
   /** Who kicked off the first half; the other team kicks off the second. */
   private readonly firstKickoff: 0 | 1 = 0;
+  readonly halfLength: number;
+  private readonly shootoutAllowed: boolean;
+  /** The shootout, once a drawn cup tie gets to one. */
+  shootout: Shootout | null = null;
+  /** The shootout kick being taken: the kicking team, and game seconds since it was struck (null before). */
+  private kick: { team: 0 | 1; t: number | null } | null = null;
 
-  /** `kickoff`: start with a kick-off, rather than straight into open play (the unit tests). */
-  constructor(kickoff: boolean) {
-    this.phase = kickoff
+  constructor(options: MatchOptions = {}) {
+    this.halfLength = options.halfLength ?? TUNING.match.halfLength;
+    this.shootoutAllowed = options.shootout ?? false;
+    this.phase = options.kickoff
       ? { kind: 'restart', restart: { kind: 'kickoff', at: { x: 0, z: 0 }, team: this.firstKickoff }, taker: null, elapsed: 0 }
       : { kind: 'playing' };
   }
 
-  /** Which way a team is attacking: +1 towards +X. The home team (0) attacks +X in the first half. */
+  /**
+   * Which way a team is attacking: +1 towards +X. The home team (0) attacks +X in the first
+   * half. In a shootout the kicking team attacks the goal at `SHOOTOUT_END`.
+   */
   attackDir(team: 0 | 1): 1 | -1 {
+    if (this.kick) return team === this.kick.team ? SHOOTOUT_END : SHOOTOUT_END === 1 ? -1 : 1;
     const firstHalf = team === 0 ? 1 : -1;
     return this.clock.half === 1 ? firstHalf : firstHalf === 1 ? -1 : 1;
+  }
+
+  /** The team taking the shootout kick being set up or taken, if any. */
+  get kicking(): 0 | 1 | null {
+    return this.kick?.team ?? null;
   }
 
   /** The ball is live: anyone may play it. */
@@ -72,6 +104,7 @@ export class Match {
   /** The restart's taker has kicked the ball: it's live. */
   onTaken(): void {
     if (this.phase.kind === 'restart') this.phase = { kind: 'playing' };
+    if (this.kick) this.kick.t = 0;
   }
 
   update(ball: Vec3, dt: number, ctx: RulesContext, events: SimEvent[]): MatchAction | null {
@@ -79,6 +112,7 @@ export class Match {
     const phase = this.phase;
     switch (phase.kind) {
       case 'playing': {
+        if (this.kick) return this.followKick(ball, ctx, dt, events);
         this.clock.elapsed += dt;
         for (const end of [1, -1] as const) {
           if (!inGoal(ball, end)) continue;
@@ -95,7 +129,7 @@ export class Match {
           events.push({ type: 'out', restart });
           return null;
         }
-        if (this.clock.elapsed >= T.match.halfLength) return this.endHalf(events);
+        if (this.clock.elapsed >= this.halfLength) return this.endHalf(events);
         return null;
       }
       case 'goal': {
@@ -123,9 +157,44 @@ export class Match {
         this.phase = { kind: 'restart', restart, taker: null, elapsed: 0 };
         return { kind: 'secondHalf', restart };
       }
+      case 'shootoutPause': {
+        phase.timer -= dt;
+        if (phase.timer > 0) return null;
+        const s = this.shootout!;
+        if (s.decided) {
+          this.kick = null;
+          this.phase = { kind: 'fullTime' };
+          events.push({ type: 'fullTime', score: [this.score[0], this.score[1]], shootout: [s.goals[0], s.goals[1]] });
+          return null;
+        }
+        // The next kick: the ball on the spot in front of the shootout goal.
+        const team = s.next;
+        this.kick = { team, t: null };
+        return this.restart({ kind: 'shootout', at: { x: SHOOTOUT_END * (HALF_LENGTH - PENALTY_SPOT_DISTANCE), z: 0 }, team });
+      }
       case 'fullTime':
         return null;
     }
+  }
+
+  /**
+   * A shootout kick in flight: it's over when the ball is in the net (scored), or when it
+   * stops heading for goal (saved, off the woodwork, caught), leaves the cage, or has had
+   * `shootoutKickTime` seconds (missed). No rebounds.
+   */
+  private followKick(ball: Vec3, ctx: RulesContext, dt: number, events: SimEvent[]): MatchAction | null {
+    const kick = this.kick!;
+    if (kick.t === null) return null;
+    kick.t += dt;
+    const scored = inGoal(ball, SHOOTOUT_END);
+    const towards = ctx.ballVel.x * SHOOTOUT_END;
+    const missed = outOfCage(ball) || kick.t > TUNING.match.shootoutKickTime || (kick.t > 0.3 && towards < 0.5);
+    if (!scored && !missed) return null;
+    const s = this.shootout!;
+    s.record(kick.team, scored);
+    events.push({ type: 'shootoutKick', team: kick.team, scored, tally: [s.goals[0], s.goals[1]] });
+    this.phase = { kind: 'shootoutPause', timer: TUNING.match.shootoutDelay };
+    return null;
   }
 
   /** A foul in open play: stop the clock, and set up `restart` (free kick or penalty) after a moment. */
@@ -152,6 +221,11 @@ export class Match {
     if (this.clock.half === 1) {
       this.phase = { kind: 'halfTime', timer: TUNING.match.halfTimePause };
       events.push({ type: 'halfTime', score });
+    } else if (this.shootoutAllowed && score[0] === score[1]) {
+      // A drawn cup tie: penalties.
+      this.shootout = new Shootout(0, TUNING.match.shootoutRounds);
+      this.phase = { kind: 'shootoutPause', timer: TUNING.match.shootoutDelay };
+      events.push({ type: 'shootoutStart', score });
     } else {
       this.phase = { kind: 'fullTime' };
       events.push({ type: 'fullTime', score });

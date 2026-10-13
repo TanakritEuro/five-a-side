@@ -33,6 +33,10 @@ export interface SimOptions {
   levels?: readonly [LevelName, LevelName];
   /** Start with a kick-off (a real match) rather than straight into open play (most tests). */
   kickoff?: boolean;
+  /** Game seconds per half (default `TUNING.match.halfLength`). */
+  halfLength?: number;
+  /** A draw goes to a penalty shootout (a cup tie). */
+  shootout?: boolean;
 }
 
 /** Something a player did with the ball or their body, for animation. */
@@ -113,6 +117,8 @@ export class Sim {
   readonly keeperLevels: readonly [KeeperLevel, KeeperLevel];
   /** The ball's velocity at the start of the current step's physics. */
   private incoming: Vec3 = { x: 0, y: 0, z: 0 };
+  /** Each team's shootout takers, in order. */
+  private readonly shootoutOrder: number[][];
   /** Each player's last action, for the snapshots. */
   private readonly actions: ({ kind: ActionKind; tick: number } | null)[] = [];
   /** Shoulder challenges in progress last step (carrier and challenger ids, as "carrier:challenger"). */
@@ -131,7 +137,8 @@ export class Sim {
     // An AI team's level shifts its players' ratings.
     const boost = (spec: PlayerSpec) => (options.ai ? TUNING.levels[spec.team === 0 ? home : away].attributes : 0);
     this.players = options.players.map((spec, id) => createPlayer(physics, id, withBoost(spec, boost(spec))));
-    this.match = new Match(options.kickoff ?? false);
+    this.match = new Match({ kickoff: options.kickoff, halfLength: options.halfLength, shootout: options.shootout });
+    this.shootoutOrder = ([0, 1] as const).map((team) => shootoutOrder(this.players, team));
     this.placeBall({ x: 0, z: 0 });
     if (this.match.phase.kind === 'restart') this.setRestart(this.match.phase.restart, []);
     this.curr = this.emptySnapshot();
@@ -446,7 +453,12 @@ export class Sim {
 
   private rulesContext(): RulesContext {
     const last = this.possession.lastTouch;
-    return { lastTouch: last, lastTouchTeam: last === null ? null : this.players[last].team, attackDir: (t) => this.attackDir(t) };
+    return {
+      lastTouch: last,
+      lastTouchTeam: last === null ? null : this.players[last].team,
+      attackDir: (t) => this.attackDir(t),
+      ballVel: this.ball.linvel(),
+    };
   }
 
   private apply(action: MatchAction, events: SimEvent[]): void {
@@ -460,7 +472,12 @@ export class Sim {
     this.handling.drop();
     this.lastPass = null;
     this.shot = null;
-    const taker = chooseTaker(this.players, restart);
+    // A shootout's takers go in a fixed order: the best shooters first, round and round.
+    const shootout = this.match.shootout;
+    const taker =
+      restart.kind === 'shootout' && shootout
+        ? this.shootoutOrder[restart.team][shootout.taken[restart.team] % this.shootoutOrder[restart.team].length]
+        : chooseTaker(this.players, restart);
     for (const p of this.players) {
       p.charge = null;
       p.pendingKick = null;
@@ -544,4 +561,11 @@ function withBoost(spec: PlayerSpec, boost: number): PlayerSpec {
 /** The x of the goal line `team` defends. */
 function ownGoalX(sim: Sim, team: 0 | 1): number {
   return -sim.attackDir(team) * HALF_LENGTH;
+}
+
+/** The order `team` takes shootout kicks in: outfield players by shooting, best first, then the keeper. */
+function shootoutOrder(players: readonly Player[], team: 0 | 1): number[] {
+  const mine = players.filter((p) => p.team === team);
+  const outfield = mine.filter((p) => !p.keeper).sort((a, b) => b.attrs.shooting - a.attrs.shooting || a.id - b.id);
+  return [...outfield, ...mine.filter((p) => p.keeper)].map((p) => p.id);
 }

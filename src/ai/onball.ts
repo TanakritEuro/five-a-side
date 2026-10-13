@@ -130,7 +130,7 @@ export function takeRestart(sim: Sim, p: Player, state: Extract<AiState, { kind:
   const phase = sim.match.phase;
   if (phase.kind !== 'restart') return IDLE;
   const M = TUNING.match;
-  if (!state.plan && phase.restart.kind === 'penalty') {
+  if (!state.plan && (phase.restart.kind === 'penalty' || phase.restart.kind === 'shootout')) {
     state.plan = { kind: 'shoot', corner: ctx.rng() < 0.5 ? 1 : -1, hold: Math.round((M.penaltyPower * TUNING.shot.chargeTime) / PHYSICS_STEP) };
   } else if (!state.plan && phase.restart.kind === 'freeKick' && phase.elapsed >= M.aiTakerDelay && (wallSet(sim, p) || phase.elapsed >= M.aiWallWait)) {
     const choice = decide(sim, p, ctx.level, ctx.rng);

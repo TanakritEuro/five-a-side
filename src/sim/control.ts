@@ -48,6 +48,8 @@ export class HumanControl {
       this.swallowPass = true;
     }
     if (!raw.pass) this.swallowPass = false;
+    // In a shootout you only take your team's kicks; between them you wait.
+    if (sim.match.shootout && !this.penaltyTaker(sim)) return { ...raw, move: { x: 0, z: 0 }, sprint: false, pass: false, shoot: false, lob: false, tackle: false, press: false, switch: false };
     return {
       ...raw,
       move: this.penaltyTaker(sim) ? penaltyAim(sim, p, raw.move) : raw.move,
@@ -85,7 +87,7 @@ export class HumanControl {
   /** Is the controlled player waiting to take a penalty? */
   private penaltyTaker(sim: Sim): boolean {
     const phase = sim.match.phase;
-    return phase.kind === 'restart' && phase.restart.kind === 'penalty' && phase.taker === this.controlled;
+    return phase.kind === 'restart' && (phase.restart.kind === 'penalty' || phase.restart.kind === 'shootout') && phase.taker === this.controlled;
   }
 
   private switchTo(id: number | null): void {

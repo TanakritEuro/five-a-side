@@ -1,7 +1,6 @@
 import { TUNING } from '../config';
 import { chargePower } from '../sim/kick';
 import type { Player } from '../sim/player';
-import { TEAMS } from '../team/teams';
 
 /** Heads-up display: score, a status line, the shot power meter and a stamina bar. */
 export class Hud {
@@ -19,7 +18,12 @@ export class Hud {
   /** Seconds the meter stays up after a shot, showing the power it was struck at. */
   private meterHold = 0;
 
-  constructor(root: HTMLElement, hint: string) {
+  constructor(
+    root: HTMLElement,
+    hint: string,
+    /** The teams' short names, home first. */
+    private readonly names: readonly [string, string],
+  ) {
     this.hint = hint;
     this.scoreboard = el(root, 'div', 'scoreboard');
     this.score = el(this.scoreboard, 'span', 'score');
@@ -44,7 +48,7 @@ export class Hud {
   }
 
   setScore(home: number, away: number): void {
-    this.score.textContent = `${TEAMS[0].short} ${home} – ${away} ${TEAMS[1].short}`;
+    this.score.textContent = `${this.names[0]} ${home} – ${away} ${this.names[1]}`;
   }
 
   /** Game time left in the half, counting down, e.g. "1H 2:41". */
@@ -59,6 +63,11 @@ export class Hud {
     this.replay.textContent = caption === null ? '' : caption ? `REPLAY · ${caption}` : 'REPLAY';
     this.panel.classList.toggle('hidden', caption !== null);
     this.status.classList.toggle('hidden', caption !== null);
+  }
+
+  /** In a shootout the clock gives way to its tally. */
+  setShootout(goals: readonly [number, number]): void {
+    this.clock.textContent = `PENS ${goals[0]}–${goals[1]}`;
   }
 
   /** Show `text` for `seconds`, then go back to the controls hint. */

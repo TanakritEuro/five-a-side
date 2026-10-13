@@ -118,6 +118,12 @@ export class Ai {
       const current = this.states[p.id];
       return current?.kind === 'takeRestart' ? current : { kind: 'takeRestart', plan: null };
     }
+    // A shootout: only the defending keeper has anything to do.
+    if (sim.match.shootout) {
+      const defending = p.keeper && sim.match.kicking !== null && p.team !== sim.match.kicking;
+      if (!defending) return { kind: 'wait' };
+      return this.keeperState(sim, p) ?? { kind: 'keeper' };
+    }
     const wall = this.walls.get(p.id);
     if (wall) return { kind: 'wall', spot: wall };
     if (p.keeper) {
