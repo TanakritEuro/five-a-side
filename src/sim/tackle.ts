@@ -12,6 +12,9 @@ const DEG = Math.PI / 180;
 /** A tackle in progress: the lunge along heading `dir` (resolved once, at `contactTime`), then recovery. */
 export type TackleState = { kind: 'lunge'; dir: number; elapsed: number; resolved: boolean } | { kind: 'recover'; elapsed: number };
 
+/** The event a resolved tackle reports. */
+export type TackleEvent = Extract<SimEvent, { type: 'tackle' }>;
+
 /** What came of a tackle. */
 export type TackleOutcome = 'won' | 'missed' | 'foul';
 
@@ -64,7 +67,7 @@ export function stepTackle(
   rng: Rng,
   dt: number,
   live: boolean,
-): SimEvent | null {
+): TackleEvent | null {
   const T = TUNING.tackle;
   const s = p.tackle;
   if (!s) return null;

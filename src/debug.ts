@@ -9,7 +9,7 @@ import type { Sim } from './sim/sim';
 
 /**
  * `?debug`: what the AI is thinking, and the controlled player's details.
- * - a label over every player with their AI state (and who they mark);
+ * - a label over every player with their AI state (and who they mark), and any tackle;
  * - the support spots the attacking team scored, green (good) to red (poor);
  * - pass lanes from the ball carrier to each teammate, green if safe, red if not;
  * - each team's chase point for a loose ball, and the last kick's predicted path;
@@ -110,7 +110,9 @@ export class DebugOverlay {
       const label = (this.labels[i] ??= this.labelRoot.appendChild(document.createElement('div')));
       const s = ai.states[p.id];
       const you = sim.humanDriven.has(p.id) ? ' (you)' : '';
-      label.textContent = s ? `${describe(s)}${you}` : '';
+      // A tackle in progress: lunging, or recovering from one.
+      const tackle = p.tackle ? ` · ${p.tackle.kind === 'lunge' ? 'TACKLE' : 'recover'}` : '';
+      label.textContent = s ? `${describe(s)}${tackle}${you}` : '';
       label.className = p.team === 0 ? 'home' : 'away';
       this.v.copy(meshes[i].position).setY(2.15).project(this.camera);
       label.style.left = `${((this.v.x + 1) / 2) * 100}%`;
@@ -171,7 +173,7 @@ function describe(s: AiState): string {
     case 'dribble':
       return s.plan.kind === 'run' ? 'dribble' : s.plan.kind === 'pass' ? `pass to ${s.plan.to}` : 'shoot';
     case 'takeRestart':
-      return 'restart';
+      return s.plan?.kind === 'shoot' ? 'restart: shoot' : 'restart';
     default:
       return s.kind;
   }

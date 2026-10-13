@@ -6,13 +6,15 @@ import { outOfCage, restartAfterOut, type Restart, type RulesContext } from './r
 
 /** The match's state machine. */
 export type Phase =
-  /** Ball on the spot for a kick-off, kick-in or goal clearance; waits for `taker` to kick it. */
+  /** Ball on the spot for a kick-off or set piece; waits for `taker` to kick it. */
   | { kind: 'restart'; restart: Restart; taker: number | null; elapsed: number }
   | { kind: 'playing' }
   /** The ball is in the net; kick-off after `goalDelay`. */
   | { kind: 'goal'; team: 0 | 1; timer: number }
   /** The ball went over the netting; set piece after `outDelay`. */
   | { kind: 'out'; restart: Restart; timer: number }
+  /** The referee has blown for a foul; free kick or penalty after `foulDelay`. */
+  | { kind: 'foul'; restart: Restart; timer: number }
   | { kind: 'halfTime'; timer: number }
   | { kind: 'fullTime' };
 
@@ -101,7 +103,8 @@ export class Match {
         // The team that conceded kicks off.
         return this.restart({ kind: 'kickoff', at: { x: 0, z: 0 }, team: phase.team === 0 ? 1 : 0 });
       }
-      case 'out': {
+      case 'out':
+      case 'foul': {
         phase.timer -= dt;
         return phase.timer > 0 ? null : this.restart(phase.restart);
       }
@@ -122,6 +125,12 @@ export class Match {
       case 'fullTime':
         return null;
     }
+  }
+
+  /** A foul in open play: stop the clock, and set up `restart` (free kick or penalty) after a moment. */
+  foul(restart: Restart): void {
+    if (this.phase.kind !== 'playing') return;
+    this.phase = { kind: 'foul', restart, timer: TUNING.match.foulDelay };
   }
 
   /** Called by the simulation once it has placed the ball and picked the taker. */

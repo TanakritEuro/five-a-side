@@ -35,8 +35,13 @@ export type AiState =
   | { kind: 'holding'; to: number | null }
   /** On the ball (see onball.ts). */
   | { kind: 'dribble'; plan: DribblePlan }
-  /** Taking a kick-off, kick-in or goal clearance. */
-  | { kind: 'takeRestart' };
+  /** Taking a kick-off or set piece, once decided how (see onball.ts). */
+  | { kind: 'takeRestart'; plan: RestartPlan | null }
+  /** Standing in the wall at a free kick near our goal. */
+  | { kind: 'wall'; spot: Vec2 };
+
+/** How an AI taker means to take a set piece: shoot at a corner (holding K for `hold` steps), or pass. */
+export type RestartPlan = { kind: 'shoot'; corner: 1 | -1; hold: number } | { kind: 'pass' };
 
 export type DribblePlan =
   /** Carry it at goal, aiming for one corner (+1 or -1 across the goal); decide again at tick `nextDecision`. */
@@ -88,6 +93,10 @@ export function offBall(sim: Sim, p: Player, state: AiState, plan: TeamPlan): Co
     }
     case 'keeper':
       return steer(arrive(p, keeperSpot(sim, p), 0.2));
+    case 'wall': {
+      const s = arrive(p, state.spot, 0.1);
+      return steer({ move: s.move, sprint: s.sprint || far(p, state.spot, 3) });
+    }
     case 'dive':
     case 'holding':
     case 'dribble':
@@ -116,6 +125,34 @@ export function pressTackle(sim: Sim, p: Player, carrier: Player, level: AiLevel
   if (approach(p, carrier) < TUNING.ai.behindTackle && !through) return false;
   if (winChance(p, carrier, b) < level.tackleChance) return false;
   return rng() < level.tackleRate * PHYSICS_STEP;
+}
+
+/**
+ * Where `team`'s wall stands at the other team's free kick, if it's close enough to
+ * their goal to need one: two spots side by side on the line from the ball to the
+ * middle of the goal, just outside the distance the kick gives them, the second towards
+ * the near post. Empty otherwise.
+ */
+export function wallSpots(sim: Sim, team: 0 | 1): Vec2[] {
+  const phase = sim.match.phase;
+  if (phase.kind !== 'restart' || phase.restart.kind !== 'freeKick' || phase.restart.team === team) return [];
+  const b = phase.restart.at;
+  const g = ownGoal(sim, team);
+  const dx = g.x - b.x;
+  const dz = g.z - b.z;
+  const d = Math.hypot(dx, dz);
+  const out = TUNING.match.freeKickDistance + 0.2;
+  if (d > TUNING.ai.wallRange || d < out + 1) return [];
+  const ux = dx / d;
+  const uz = dz / d;
+  const first = { x: b.x + ux * out, z: b.z + uz * out };
+  // Across the line, towards the side of the pitch the ball is on (the near post).
+  const side = b.z >= 0 ? 1 : -1;
+  const flip = ux * side >= 0 ? 1 : -1;
+  const nx = -uz * flip;
+  const nz = ux * flip;
+  const k = TUNING.ai.wallSpacing;
+  return [insidePitch(first), insidePitch({ x: first.x + nx * k, z: first.z + nz * k })];
 }
 
 /** Goal-side of where `opponent` is heading, by `markDistance`, nudged towards the ball to cut off a pass to them. */

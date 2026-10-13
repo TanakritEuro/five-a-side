@@ -33,7 +33,13 @@ export interface GameOptions {
 }
 
 const HINT = 'WASD: move · Shift: sprint · J: pass / switch · K: shoot (hold) / tackle · L: call a press';
-const RESTART_NAMES: Record<RestartKind, string> = { kickoff: 'Kick-off', kickIn: 'Kick-in', goalClearance: 'Goal clearance' };
+const RESTART_NAMES: Record<RestartKind, string> = {
+  kickoff: 'Kick-off',
+  kickIn: 'Kick-in',
+  goalClearance: 'Goal clearance',
+  freeKick: 'Free kick',
+  penalty: 'Penalty',
+};
 const TACKLE_NAMES: Record<TackleOutcome, string> = { won: 'Won it!', missed: 'Missed', foul: 'Foul' };
 
 /**
@@ -160,9 +166,12 @@ export class Game {
       case 'restart':
         this.hud.flash(RESTART_NAMES[e.restart.kind], 1.5);
         break;
+      case 'foul':
+        this.hud.flash(e.restart.kind === 'penalty' ? 'Foul! · Penalty' : 'Foul! · Free kick', TUNING.match.foulDelay);
+        break;
       case 'tackle':
         // Only your own tackles: the AI's are plain to see.
-        if (e.player === this.controlled) this.hud.flash(TACKLE_NAMES[e.outcome], 0.8);
+        if (e.player === this.controlled && e.outcome !== 'foul') this.hud.flash(TACKLE_NAMES[e.outcome], 0.8);
         break;
       case 'halfTime':
         this.hud.flash(`Half time · ${scoreLine(e.score)}`, TUNING.match.halfTimePause);

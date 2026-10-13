@@ -1,6 +1,6 @@
 import { TUNING, type AiLevel } from '../config';
 import { GOAL_WIDTH, HALF_LENGTH, PHYSICS_STEP } from '../constants';
-import { clamp, type Rng } from '../math';
+import { clamp, headingVec, wrapAngle, type Rng } from '../math';
 import { IDLE, type Command } from '../sim/command';
 import type { Player } from '../sim/player';
 import { chargePower, shotAim } from '../sim/kick';
@@ -9,7 +9,7 @@ import type { Sim } from '../sim/sim';
 import { DEG, distanceToSegment, nearestTeammate, opponentAhead, sidestep, steer } from './geometry';
 import { decide } from './decide';
 import { facing } from './intercept';
-import type { AiState, DribblePlan } from './states';
+import { wallSpots, type AiState, type DribblePlan, type RestartPlan } from './states';
 import { insidePitch, seek, STAND } from './steering';
 
 /** What on-ball decisions need besides the sim: the AI's dice and the team's level. */
@@ -121,10 +121,30 @@ export function dribble(sim: Sim, p: Player, state: Extract<AiState, { kind: 'dr
   }
 }
 
-/** The command for an AI taker at a kick-off, kick-in or goal clearance: turn to a teammate, then pass. */
-export function takeRestart(sim: Sim, p: Player): Command {
+/**
+ * The command for an AI taker at a restart. A penalty is shot at a corner picked at
+ * random. A free kick is weighed up like any ball at their feet (`decide`): a shot, or a
+ * pass. Anything else is a pass: turn to a teammate, then tap J.
+ */
+export function takeRestart(sim: Sim, p: Player, state: Extract<AiState, { kind: 'takeRestart' }>, ctx: OnBallContext): Command {
   const phase = sim.match.phase;
   if (phase.kind !== 'restart') return IDLE;
+  const M = TUNING.match;
+  if (!state.plan && phase.restart.kind === 'penalty') {
+    state.plan = { kind: 'shoot', corner: ctx.rng() < 0.5 ? 1 : -1, hold: Math.round((M.penaltyPower * TUNING.shot.chargeTime) / PHYSICS_STEP) };
+  } else if (!state.plan && phase.restart.kind === 'freeKick' && phase.elapsed >= M.aiTakerDelay && (wallSet(sim, p) || phase.elapsed >= M.aiWallWait)) {
+    const choice = decide(sim, p, ctx.level, ctx.rng);
+    if (choice.kind === 'shoot') {
+      const toGoal = Math.hypot(choice.target.x - p.pos.x, choice.target.z - p.pos.z);
+      const A = TUNING.ai;
+      const power = clamp(A.shotPower[0] + ((A.shotPower[1] - A.shotPower[0]) * toGoal) / A.shootRange, 0, 1);
+      state.plan = { kind: 'shoot', corner: choice.corner ?? 1, hold: Math.round((power * TUNING.shot.chargeTime) / PHYSICS_STEP) };
+    } else {
+      state.plan = { kind: 'pass' };
+    }
+  }
+  if (state.plan?.kind === 'shoot') return restartShot(sim, p, state.plan, phase.elapsed);
+  if (phase.restart.kind === 'freeKick' && !state.plan) return IDLE;
   // Anyone open, backwards included; failing that, the nearest teammate.
   const to = bestPassTarget(sim, p, true) ?? nearestTeammate(sim, p);
   if (!to) return phase.elapsed > 3 * TUNING.match.aiTakerDelay ? { ...IDLE, pass: sim.tick % 10 < 5 } : IDLE;
@@ -167,4 +187,28 @@ export function bestPassTarget(sim: Sim, p: Player, backwards = false): Player |
     }
   }
   return best;
+}
+
+/**
+ * A set-piece shot: turn on the spot until facing inside the chosen post, then hold K up
+ * to the planned power and let go (the kick is taken as the button comes up).
+ */
+function restartShot(sim: Sim, p: Player, plan: Extract<RestartPlan, { kind: 'shoot' }>, elapsed: number): Command {
+  const dir = sim.attackDir(p.team);
+  const ball = sim.ball.translation();
+  const target = { x: dir * HALF_LENGTH, z: plan.corner * (GOAL_WIDTH / 2 - TUNING.shot.postInset - 0.1) };
+  const want = Math.atan2(target.z - ball.z, target.x - ball.x);
+  const off = wrapAngle(want - p.facing);
+  const aimed = Math.abs(off) < 1.5 * DEG && shotAim(ball, p.facing, chargePower(p), dir).atGoal;
+  const turn = Math.abs(off) < 1e-3 ? { x: 0, z: 0 } : headingVec(want);
+  if (p.charge) return { ...IDLE, move: turn, shoot: p.charge.steps < plan.hold };
+  return { ...IDLE, move: turn, shoot: aimed && elapsed >= TUNING.match.aiTakerDelay && p.pendingKick === null };
+}
+
+/** Is the other team's wall (if they need one against `p`'s free kick) in place? */
+function wallSet(sim: Sim, p: Player): boolean {
+  const other = p.team === 0 ? 1 : 0;
+  return wallSpots(sim, other).every((spot) =>
+    sim.players.some((q) => q.team === other && Math.hypot(q.pos.x - spot.x, q.pos.z - spot.z) < 0.5),
+  );
 }

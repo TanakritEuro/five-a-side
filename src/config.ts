@@ -304,6 +304,9 @@ export const TUNING = {
     /** A presser goes in from behind the carrier (see `approach`, below this) only when they're within this far (m) of goal. */
     behindTackle: -0.3,
     throughOnGoal: 10,
+    /** At a free kick this close (m) to their goal, defenders put two players in a wall, this far (m) apart. */
+    wallRange: 12,
+    wallSpacing: 0.7,
     /** Defending: the presser closes to this far (m) goal-side of the ball, the cover sits this far back... */
     pressDistance: 0.8,
     coverDistance: 4,
@@ -450,12 +453,27 @@ export const TUNING = {
     goalDelay: 2.5,
     /** Seconds between the ball going over the netting and the set piece. */
     outDelay: 1.5,
-    /** Opponents keep this far (m) from the ball at a kick-in or goal clearance. */
+    /** Seconds between the whistle for a foul and the free kick or penalty. */
+    foulDelay: 1.5,
+    /** Opponents keep this far (m) from the ball at a kick-in or goal clearance... */
     setPieceDistance: 3,
+    /** ...and at a free kick. */
+    freeKickDistance: 4,
+    /** At a penalty everyone else stands at least this far (m) behind the spot. */
+    penaltyBehind: 1,
+    /** ...and the defending keeper stands on the line, this far (m) in front of it. */
+    keeperOnLine: 0.3,
     /** A restart's taker stands this far (m) behind the ball. */
     takerOffset: 0.6,
-    /** An AI taker kicks after this many seconds. */
+    /** An AI taker kicks after this many seconds... */
     aiTakerDelay: 0.8,
+    /** ...but at a free kick waits for the other team's wall to set, up to this many seconds. */
+    aiWallWait: 3,
+    /** A penalty taker aims by turning (A/D) at this rate (rad/s), up to this far (rad) either side of the middle of the goal. */
+    penaltyTurnRate: 0.8,
+    penaltyMaxAim: 0.3,
+    /** AI penalty power (0–1). */
+    penaltyPower: 0.72,
   },
   ball: {
     /** Scales the Magnus force: 1 is physical, higher bends shots more. */

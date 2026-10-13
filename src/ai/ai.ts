@@ -8,7 +8,7 @@ import type { Sim } from '../sim/sim';
 import { TeamBrain, type TeamPlan } from './brain';
 import { diveCommand, diveTick, holdingCommand, incomingShot, planDive } from './keeper';
 import { dribble, runPlan, takeRestart } from './onball';
-import { offBall, pressTackle, type AiState } from './states';
+import { offBall, pressTackle, wallSpots, type AiState } from './states';
 
 export type { AiState, DribblePlan } from './states';
 
@@ -32,6 +32,8 @@ export class Ai {
   /** Per keeper: the ball path (by the tick it was predicted) they last dived for. */
   private readonly divedFor: number[] = [];
   private readonly stepsToBrain = [0, 0];
+  /** This step's wall: player → where they stand. */
+  private readonly walls = new Map<number, Vec2>();
 
   constructor(
     seed: number,
@@ -51,7 +53,28 @@ export class Ai {
       const elapsed = this.track ? (sim.tick - this.track.tick) * PHYSICS_STEP : 0;
       brain.update(sim, path, elapsed);
     }
+    this.planWalls(sim);
     for (const p of sim.players) this.set(sim, p, this.assign(sim, p));
+  }
+
+  /** Who stands in each team's wall (if a free kick against them needs one): the nearest outfield players to its spots. */
+  private planWalls(sim: Sim): void {
+    this.walls.clear();
+    for (const team of [0, 1] as const) {
+      for (const spot of wallSpots(sim, team)) {
+        let best: Player | null = null;
+        let bestD = Infinity;
+        for (const p of sim.players) {
+          if (p.team !== team || p.spec.role === 'keeper' || sim.humanDriven.has(p.id) || this.walls.has(p.id)) continue;
+          const d = Math.hypot(spot.x - p.pos.x, spot.z - p.pos.z);
+          if (d < bestD) {
+            bestD = d;
+            best = p;
+          }
+        }
+        if (best) this.walls.set(best.id, spot);
+      }
+    }
   }
 
   command(sim: Sim, p: Player): Command {
@@ -60,7 +83,7 @@ export class Ai {
     if (state.kind === 'dribble') {
       return dribble(sim, p, state, (sim.tick - this.since[p.id]) * PHYSICS_STEP, { rng: this.rng, level: this.levels[p.team] });
     }
-    if (state.kind === 'takeRestart') return takeRestart(sim, p);
+    if (state.kind === 'takeRestart') return takeRestart(sim, p, state, { rng: this.rng, level: this.levels[p.team] });
     if (state.kind === 'dive') return diveCommand(sim, state);
     if (state.kind === 'holding') return holdingCommand(sim, p, state);
     const cmd = offBall(sim, p, state, this.planOf(p.team));
@@ -84,7 +107,12 @@ export class Ai {
   private assign(sim: Sim, p: Player): AiState {
     const owner = sim.possession.owner;
     const plan = this.planOf(p.team);
-    if (p.id === sim.match.taker) return { kind: 'takeRestart' };
+    if (p.id === sim.match.taker) {
+      const current = this.states[p.id];
+      return current?.kind === 'takeRestart' ? current : { kind: 'takeRestart', plan: null };
+    }
+    const wall = this.walls.get(p.id);
+    if (wall) return { kind: 'wall', spot: wall };
     if (p.keeper) {
       const keeping = this.keeperState(sim, p);
       if (keeping) return keeping;

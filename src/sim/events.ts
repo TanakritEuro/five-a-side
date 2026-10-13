@@ -19,6 +19,8 @@ export type SimEvent =
   | { type: 'tackle'; player: number; carrier: number | null; outcome: TackleOutcome }
   /** A shoulder challenge began: `challenger` came into contact with the ball `carrier`. */
   | { type: 'challenge'; carrier: number; challenger: number }
+  /** `player` fouled `against`: a free kick or penalty (`restart`) follows. */
+  | { type: 'foul'; player: number; against: number; restart: Restart }
   /** How a shot at goal ended. */
   | { type: 'shot'; player: number; outcome: ShotOutcome }
   /** The ball hit a post or the bar. */

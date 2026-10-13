@@ -17,7 +17,7 @@ import { Match, type MatchAction } from './match';
 import { AVERAGE, createPlayer, integratePlayer, syncBody, teleportBody, type Player, type PlayerSpec } from './player';
 import { canPlayBall, Possession } from './possession';
 import { chooseTaker, faceNearestTeammate, holdRestartShape, placeForRestart } from './restarts';
-import type { Restart, RulesContext } from './rules';
+import { restartForFoul, type Restart, type RulesContext } from './rules';
 import { keepOffBall, separatePlayers, type Challenge } from './separation';
 import { startTackle, stepTackle, tackleMove } from './tackle';
 
@@ -146,6 +146,16 @@ export class Sim {
     }
   }
 
+  /** `p` fouled `victim`: stop play for a free kick, or a penalty in `p`'s own goal area. */
+  private foul(p: Player, victim: Player, events: SimEvent[]): void {
+    if (!this.match.inPlay) return;
+    const restart = restartForFoul(victim.pos, victim.team, (t) => this.attackDir(t));
+    this.match.foul(restart);
+    this.shot = null;
+    this.lastPass = null;
+    events.push({ type: 'foul', player: p.id, against: victim.id, restart });
+  }
+
   /** Report shoulder challenges as they begin. */
   private noteChallenges(challenges: readonly Challenge[], events: SimEvent[]): void {
     const now = new Set<string>();
@@ -237,7 +247,9 @@ export class Sim {
     for (const p of this.players) syncBody(p);
     for (const p of this.players) {
       const tackled = stepTackle(p, this.players, this.ball, this.possession, this.rng, dt, match.inPlay);
-      if (tackled) this.onPlayed(tackled, events);
+      if (!tackled) continue;
+      this.onPlayed(tackled, events);
+      if (tackled.outcome === 'foul' && tackled.carrier !== null) this.foul(p, this.players[tackled.carrier], events);
     }
 
     for (const p of this.players) {

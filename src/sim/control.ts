@@ -1,5 +1,7 @@
 import { timeToReach } from '../ai/intercept';
 import { TUNING } from '../config';
+import { HALF_LENGTH, PHYSICS_STEP } from '../constants';
+import { clamp, headingVec, wrapAngle, type Vec2 } from '../math';
 import type { Command } from './command';
 import type { SimEvent } from './events';
 import type { Player } from './player';
@@ -48,6 +50,7 @@ export class HumanControl {
     if (!raw.pass) this.swallowPass = false;
     return {
       ...raw,
+      move: this.penaltyTaker(sim) ? penaltyAim(sim, p, raw.move) : raw.move,
       pass: raw.pass && !this.swallowPass && onBall,
       switch: false,
       // L calls a teammate to press when the other team has the ball; otherwise it's the
@@ -79,6 +82,12 @@ export class HumanControl {
     this.lastOwner = owner;
   }
 
+  /** Is the controlled player waiting to take a penalty? */
+  private penaltyTaker(sim: Sim): boolean {
+    const phase = sim.match.phase;
+    return phase.kind === 'restart' && phase.restart.kind === 'penalty' && phase.taker === this.controlled;
+  }
+
   private switchTo(id: number | null): void {
     if (id !== null) this.controlled = id;
   }
@@ -108,4 +117,19 @@ export function bestPlaced(sim: Sim, team: 0 | 1, exclude: number | null): numbe
     }
   }
   return best;
+}
+
+/**
+ * Taking a penalty, A and D turn the taker to their left and right (from where they
+ * stand, whichever way the camera sees them), a little at a time, within
+ * `penaltyMaxAim` of the middle of the goal. Returns the move that makes that turn.
+ */
+function penaltyAim(sim: Sim, p: Player, move: Vec2): Vec2 {
+  const M = TUNING.match;
+  if (Math.abs(move.x) < 0.1) return { x: 0, z: 0 };
+  const dir = sim.attackDir(p.team);
+  const middle = Math.atan2(-p.pos.z, dir * HALF_LENGTH - p.pos.x);
+  // Turning right (D) from facing +X is towards +Z: the heading increases.
+  const off = clamp(wrapAngle(p.facing - middle) + Math.sign(move.x) * M.penaltyTurnRate * PHYSICS_STEP, -M.penaltyMaxAim, M.penaltyMaxAim);
+  return headingVec(middle + off);
 }

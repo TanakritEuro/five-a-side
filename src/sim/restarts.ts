@@ -1,5 +1,5 @@
 import { TUNING } from '../config';
-import { CENTRE_CIRCLE_RADIUS, HALF_LENGTH, HALF_WIDTH, PLAYER_RADIUS } from '../constants';
+import { CENTRE_CIRCLE_RADIUS, GOAL_WIDTH, HALF_LENGTH, HALF_WIDTH, PLAYER_RADIUS } from '../constants';
 import { clamp, headingVec, type Vec2 } from '../math';
 import { placePlayer, type Player } from './player';
 import type { Restart } from './rules';
@@ -13,8 +13,9 @@ export function kickoffSpot(p: Player, half: 1 | 2): { pos: Vec2; facing: number
 }
 
 /**
- * Who takes a restart: for a goal clearance the keeper, otherwise the restart team's
- * outfield player nearest the ball (anyone, if they have no outfield players).
+ * Who takes a restart: for a goal clearance the keeper, for a penalty the best shooter,
+ * otherwise the restart team's outfield player nearest the ball (anyone, if they have no
+ * outfield players).
  */
 export function chooseTaker(players: readonly Player[], restart: Restart): number | null {
   const team = players.filter((p) => p.team === restart.team);
@@ -24,6 +25,10 @@ export function chooseTaker(players: readonly Player[], restart: Restart): numbe
   }
   const outfield = team.filter((p) => p.spec.role !== 'keeper');
   const pool = outfield.length > 0 ? outfield : team;
+  if (restart.kind === 'penalty') {
+    // The best shooter; the lowest id on a tie, so it's deterministic.
+    return pool.reduce<Player | null>((best, p) => (!best || p.attrs.shooting > best.attrs.shooting ? p : best), null)?.id ?? null;
+  }
   let best: Player | null = null;
   let bestD = Infinity;
   for (const p of pool) {
@@ -36,17 +41,25 @@ export function chooseTaker(players: readonly Player[], restart: Restart): numbe
   return best?.id ?? null;
 }
 
-/** The way a taker starts out facing: forward at a kick-off or goal clearance, forward and infield at a kick-in. */
+/**
+ * The way a taker starts out facing: forward and infield at a kick-in, at the middle of
+ * the goal at a free kick or penalty, otherwise forward.
+ */
 export function takerFacing(restart: Restart, attackDir: 1 | -1): number {
-  if (restart.kind !== 'kickIn') return attackDir === 1 ? 0 : Math.PI;
-  return Math.atan2(-Math.sign(restart.at.z), attackDir);
+  if (restart.kind === 'kickIn') return Math.atan2(-Math.sign(restart.at.z), attackDir);
+  if (restart.kind === 'freeKick' || restart.kind === 'penalty') {
+    return Math.atan2(-restart.at.z, attackDir * HALF_LENGTH - restart.at.x);
+  }
+  return attackDir === 1 ? 0 : Math.PI;
 }
 
 /**
  * Keep everyone where the laws say while a restart waits to be taken. The taker stands
  * just behind the ball (they can turn, which walks them round it, but not run off with
  * it). At a kick-off everyone stays in their own half and the other team stays out of
- * the centre circle; at a set piece the other team keeps `setPieceDistance` away.
+ * the centre circle. At a set piece the other team keeps `setPieceDistance` away
+ * (`freeKickDistance` at a free kick). At a penalty everyone else stands behind the
+ * spot, which keeps them out of the area, and the defending keeper stands on the line.
  */
 export function holdRestartShape(
   players: readonly Player[],
@@ -69,13 +82,23 @@ export function holdRestartShape(
       continue;
     }
     const opponent = p.team !== restart.team;
-    if (restart.kind === 'kickoff') {
+    if (restart.kind === 'penalty') {
+      const dir = attackDir(restart.team);
+      if (opponent && p.spec.role === 'keeper') {
+        p.pos.x = dir * (HALF_LENGTH - M.keeperOnLine);
+        p.pos.z = clamp(p.pos.z, -GOAL_WIDTH / 2, GOAL_WIDTH / 2);
+      } else {
+        const limit = ball.x - dir * M.penaltyBehind;
+        if ((p.pos.x - limit) * dir > 0) p.pos.x = limit;
+        keepAway(p, ball, M.setPieceDistance);
+      }
+    } else if (restart.kind === 'kickoff') {
       // Own half (x · attackDir ≤ 0), not touching the halfway line.
       const dir = attackDir(p.team);
       if (p.pos.x * dir > -PLAYER_RADIUS) p.pos.x = -dir * PLAYER_RADIUS;
       if (opponent) keepAway(p, ball, CENTRE_CIRCLE_RADIUS + PLAYER_RADIUS);
     } else if (opponent) {
-      keepAway(p, ball, M.setPieceDistance);
+      keepAway(p, ball, restart.kind === 'freeKick' ? M.freeKickDistance : M.setPieceDistance);
     }
     p.pos.x = clamp(p.pos.x, -maxX, maxX);
     p.pos.z = clamp(p.pos.z, -maxZ, maxZ);
