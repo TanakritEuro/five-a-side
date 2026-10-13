@@ -13,6 +13,7 @@ export class Hud {
   private readonly meterFill: HTMLElement;
   private readonly stamina: HTMLElement;
   private readonly panel: HTMLElement;
+  private readonly replay: HTMLElement;
   private statusUntil = 0;
   private readonly hint: string;
   /** Seconds the meter stays up after a shot, showing the power it was struck at. */
@@ -24,6 +25,8 @@ export class Hud {
     this.score = el(this.scoreboard, 'span', 'score');
     this.clock = el(this.scoreboard, 'span', 'clock');
     this.status = el(root, 'div', 'status');
+    this.replay = el(root, 'div', 'replay');
+    this.replay.classList.add('hidden');
     const panel = el(root, 'div', 'panel');
     this.panel = panel;
     this.meter = el(panel, 'div', 'meter');
@@ -48,6 +51,14 @@ export class Hud {
   setClock(half: 1 | 2, remaining: number): void {
     const s = Math.max(0, Math.ceil(remaining));
     this.clock.textContent = `${half}H ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  /** The replay banner: its caption, or null to hide it. */
+  setReplay(caption: string | null): void {
+    this.replay.classList.toggle('hidden', caption === null);
+    this.replay.textContent = caption === null ? '' : caption ? `REPLAY · ${caption}` : 'REPLAY';
+    this.panel.classList.toggle('hidden', caption !== null);
+    this.status.classList.toggle('hidden', caption !== null);
   }
 
   /** Show `text` for `seconds`, then go back to the controls hint. */

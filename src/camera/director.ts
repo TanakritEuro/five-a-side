@@ -17,8 +17,8 @@ type Cut =
   | { kind: 'goal'; end: 1 | -1; scorer: (() => Vec3) | null; t: number }
   /** Full time: the whole pitch. */
   | { kind: 'wide' }
-  /** A replay, from behind the goal at `end` or low beside its line. */
-  | { kind: 'replay'; end: 1 | -1; view: 'behind' | 'side' };
+  /** A replay, from behind the goal at `end` or from the far touchline (the reverse angle). */
+  | { kind: 'replay'; end: 1 | -1; view: 'behind' | 'reverse' };
 
 /**
  * Directs the cameras (ported in spirit from the penalty game's director):
@@ -54,7 +54,7 @@ export class Director {
     this.cut = { kind: 'wide' };
   }
 
-  replay(end: 1 | -1, view: 'behind' | 'side'): void {
+  replay(end: 1 | -1, view: 'behind' | 'reverse'): void {
     this.cut = { kind: 'replay', end, view };
   }
 
@@ -131,8 +131,9 @@ export class Director {
       // High behind the goal, looking back up the pitch at the ball.
       this.set(R.fov, lineX + cut.end * R.behind, R.behindHeight, 0, ball.x, 0.5, ball.z);
     } else {
-      // Low on the near side, level with the goal line, panning with the ball.
-      this.set(R.fov, lineX - cut.end * R.sideBack, R.sideHeight, R.side, ball.x, 0.6, ball.z);
+      // The reverse angle: from the far touchline, panning with the ball, part way towards the goal.
+      const x = lerp(ball.x, lineX, R.towardGoal);
+      this.set(R.fov, x, R.reverseHeight, -R.reverse, ball.x, 0.5, ball.z);
     }
   }
 

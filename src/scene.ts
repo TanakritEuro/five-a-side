@@ -6,7 +6,6 @@ import {
   CAGE_HEIGHT,
   CENTRE_CIRCLE_RADIUS,
   GOAL_AREA_RADIUS,
-  GOAL_DEPTH,
   GOAL_HEIGHT,
   GOAL_WIDTH,
   HALF_LENGTH,
@@ -239,22 +238,7 @@ function createGoal(end: 1 | -1): THREE.Group {
   bar.castShadow = true;
   group.add(bar);
 
-  // Net: wireframe panels (placeholder; port the ripple from ../penalty-shootout/src/net.ts).
-  const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.35 });
-  const backX = lineX + end * GOAL_DEPTH;
-  const midX = lineX + end * (GOAL_DEPTH / 2);
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(halfW * 2, topY, 16, 10), netMat);
-  back.rotation.y = Math.PI / 2;
-  back.position.set(backX, topY / 2, 0);
-  const roof = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_DEPTH, halfW * 2, 5, 16), netMat);
-  roof.rotation.x = Math.PI / 2;
-  roof.position.set(midX, topY, 0);
-  group.add(back, roof);
-  for (const z of [-halfW, halfW]) {
-    const side = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_DEPTH, topY, 5, 10), netMat);
-    side.position.set(midX, topY / 2, z);
-    group.add(side);
-  }
+  // The net is net.ts (it ripples).
   return group;
 }
 

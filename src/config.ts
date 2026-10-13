@@ -492,6 +492,30 @@ export const TUNING = {
     /** Bounce off the netting above the boards: it soaks up most of the pace. */
     cageRestitution: 0.1,
   },
+  net: {
+    /** Ripple strength is ball speed / referenceSpeed (m/s), capped at maxStrength. */
+    referenceSpeed: 22,
+    maxStrength: 1.3,
+    /** Peak displacement (m) at strength 1, and how much of it is a steady outward bulge. */
+    amplitude: 0.24,
+    bulge: 0.9,
+    /** Size of the disturbed patch (m) and how fast it settles (s). */
+    spread: 0.9,
+    decay: 0.45,
+    /** Wobble: angular frequency (rad/s) and wavenumber (rad/m) of the ripple. */
+    frequency: 16,
+    wavenumber: 5,
+  },
+  trail: {
+    /** A faint streak follows the ball above minSpeed (m/s), at full strength from fullSpeed. */
+    minSpeed: 18,
+    fullSpeed: 26,
+    /** How long (game seconds) a point of the trail lasts: its length is speed × life. */
+    life: 0.12,
+    /** Width (m) at the ball, and opacity at full strength. */
+    width: 0.16,
+    opacity: 0.45,
+  },
   camera: {
     /** Broadcast camera: height and distance back from the near touchline (m). */
     height: 13,
@@ -503,6 +527,26 @@ export const TUNING = {
     endMargin: 2,
     /** Smoothing: fraction of the remaining gap closed per second (higher = snappier). */
     lag: 4,
+  },
+  replay: {
+    /** Seconds of play kept for replays. */
+    keep: 12,
+    /**
+     * A goal's replay runs from `lead` seconds before the scoring team won the ball, but
+     * no more than `maxLength` and no less than `minLength` seconds before the goal, to
+     * `after` seconds after it.
+     */
+    lead: 1,
+    maxLength: 8,
+    minLength: 3,
+    after: 1.5,
+    /** Playback speed (fraction of real time): goal replays and R, and the highlights. */
+    speed: 0.5,
+    highlightSpeed: 0.75,
+    /** Game seconds after a goal (on the live cuts) before its replay starts. */
+    delay: 1.8,
+    /** R replays this many seconds. */
+    instant: 6,
   },
   director: {
     /**
@@ -517,8 +561,12 @@ export const TUNING = {
     goal: { fov: 38, netTime: 1.1, netBack: 3, netHeight: 2.8, netSide: 7.5, orbitRadius: 4.2, orbitHeight: 1.7, orbitStart: 0.6, orbitSpeed: 0.35 },
     /** Full time: the whole pitch from high up. */
     wide: { fov: 45, height: 26, distance: 34 },
-    /** Replays: high behind the goal, or low beside its line on the near side. */
-    replay: { fov: 42, behind: 6, behindHeight: 5, sideBack: 3, sideHeight: 1.4, side: 12 },
+    /**
+     * Replays: behind the goal (this far back, this high), or the reverse angle from the far
+     * touchline (this far out from the middle, this high), panning with the ball and this
+     * fraction of the way from it towards the goal.
+     */
+    replay: { fov: 42, behind: 6, behindHeight: 3.5, reverse: 9, reverseHeight: 4.5, towardGoal: 0.35 },
     /** Shake on the woodwork: peak angle (rad) at `referenceSpeed` (m/s), decay (s) and frequency (Hz). */
     shake: { angle: 0.012, referenceSpeed: 25, decay: 0.22, frequency: 24 },
   },

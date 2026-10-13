@@ -15,9 +15,14 @@ import type { TackleOutcome } from './sim/tackle';
 import type { RestartKind } from './sim/rules';
 import { HumanControl } from './sim/control';
 import { Sim } from './sim/sim';
+import type { Role } from './team/formation';
 import { fullLineup } from './team/lineup';
 import { TEAMS } from './team/teams';
 import { Hud } from './ui/hud';
+import { Nets } from './net';
+import { BallTrail } from './trail';
+import { Recorder, type Clip } from './replay/recorder';
+import { Replay } from './replay/replay';
 
 export interface GameOptions {
   seed: number;
@@ -33,7 +38,7 @@ export interface GameOptions {
   difficulty: LevelName;
 }
 
-const HINT = 'WASD: move · Shift: sprint · J: pass / switch · K: shoot (hold) / tackle · L: call a press · C: camera';
+const HINT = 'WASD: move · Shift: sprint · J: pass / switch · K: shoot (hold) / tackle · L: call a press · C: camera · R: replay';
 const RESTART_NAMES: Record<RestartKind, string> = {
   kickoff: 'Kick-off',
   kickIn: 'Kick-in',
@@ -42,6 +47,7 @@ const RESTART_NAMES: Record<RestartKind, string> = {
   penalty: 'Penalty',
 };
 const TACKLE_NAMES: Record<TackleOutcome, string> = { won: 'Won it!', missed: 'Missed', foul: 'Foul' };
+const ROLE_NAMES: Record<Role, string> = { keeper: 'keeper', defender: 'defender', left: 'left wing', right: 'right wing', pivot: 'pivot' };
 
 /**
  * Wires the simulation to the screen: keyboard → commands → fixed simulation steps, then
@@ -63,6 +69,16 @@ export class Game {
   private readonly control: HumanControl | null;
   private accumulator = 0;
   private last = 0;
+  private readonly nets = new Nets();
+  private readonly trail = new BallTrail();
+  private readonly recorder = new Recorder();
+  private readonly replay = new Replay();
+  /** A goal whose replay is waiting for the live cuts to finish: game seconds left, and the clip's details. */
+  private pendingReplay: { wait: number; tick: number; team: 0 | 1; end: 1 | -1; caption: string } | null = null;
+  /** Every goal's clip this match, for the highlights. */
+  private readonly highlights: Clip[] = [];
+  /** Game seconds until the full-time highlights start (null: not waiting). */
+  private highlightsIn: number | null = null;
 
   static async create(canvas: HTMLCanvasElement, hudRoot: HTMLElement, options: GameOptions): Promise<Game> {
     const sim = await Sim.create({
@@ -89,10 +105,15 @@ export class Game {
     const pivot = sim.players.findIndex((p) => p.team === 0 && p.spec.role === 'pivot');
     this.control = options.aiVsAi ? null : new HumanControl(0, sim.match.taker ?? pivot);
     this.director = new Director(this.view.camera);
-    // Keys for the presentation rather than the players: C switches camera.
+    // Keys for the presentation rather than the players: C switches camera, R replays, and
+    // any key skips a replay.
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyC' && !e.repeat) this.director.toggleMode();
+      if (e.repeat) return;
+      if (this.replay.active) this.endReplay();
+      else if (e.code === 'KeyC') this.director.toggleMode();
+      else if (e.code === 'KeyR') this.replayNow();
     });
+    this.view.scene.add(this.nets.object, this.trail.object);
     this.hud = new Hud(hudRoot, HINT);
     this.figures = sim.players.map((p) => {
       const kit = kitFor(TEAMS[p.team], p.id, p.keeper !== null);
@@ -121,6 +142,16 @@ export class Game {
     // from before the last frame shouldn't run time backwards.
     const dt = Math.min(Math.max((now - this.last) / 1000, 0), 0.25);
     this.last = now;
+    if (this.replay.active) this.replayFrame(dt);
+    else this.liveFrame(dt);
+    const { view } = this;
+    view.renderer.render(view.scene, view.camera);
+    this.stats?.update(view.renderer, dt);
+    requestAnimationFrame((t) => this.frame(t));
+  }
+
+  /** A frame of the match itself: step the simulation, draw between its last two steps. */
+  private liveFrame(dt: number): void {
     this.accumulator += dt * this.options.timescale;
 
     const raw = this.keyboard.command();
@@ -131,6 +162,7 @@ export class Game {
       if (this.control) commands[this.control.controlled] = this.control.command(this.sim, raw);
       const events = this.sim.step(commands);
       this.control?.afterStep(this.sim, events);
+      this.recordStep();
       for (const e of events) {
         if (e.type === 'kick' && e.kind === 'shoot' && e.player === this.controlled) shotPower = e.power;
         this.onEvent(e);
@@ -143,8 +175,11 @@ export class Game {
 
     const { sim, view } = this;
     const controlled = this.controlled;
+    const gameDt = dt * this.options.timescale;
     interpolate(sim.prev, sim.curr, this.accumulator / PHYSICS_STEP, view.ball, this.views);
-    this.figures.forEach((f, i) => f.update(this.views[i], dt * this.options.timescale));
+    this.figures.forEach((f, i) => f.update(this.views[i], gameDt));
+    this.nets.update(view.ball.position, gameDt);
+    this.trail.update(view.ball.position, gameDt, view.camera.position);
     const me = controlled === null ? null : this.figures[controlled].object;
     this.marker.visible = me !== null;
     if (me) this.marker.position.set(me.position.x, 0.02, me.position.z);
@@ -154,10 +189,87 @@ export class Game {
     this.hud.update(controlled === null ? null : sim.players[controlled], dt, shotPower);
     this.hud.setClock(sim.match.clock.half, TUNING.match.halfLength - sim.match.clock.elapsed);
     this.debug?.update(sim, this.figures.map((f) => f.object), controlled);
+    this.startReplays(gameDt);
+  }
 
-    view.renderer.render(view.scene, view.camera);
-    this.stats?.update(view.renderer, dt);
-    requestAnimationFrame((t) => this.frame(t));
+  /** A frame of a replay: the match stands still while recorded snapshots are drawn. */
+  private replayFrame(dt: number): void {
+    const R = TUNING.replay;
+    const frame = this.replay.update(dt);
+    if (!frame) {
+      this.endReplay();
+      this.liveFrame(0);
+      return;
+    }
+    const { view } = this;
+    const gameDt = dt * (this.sim.match.over ? R.highlightSpeed : R.speed);
+    if (frame.fresh) this.cutTo(frame.clip);
+    interpolate(frame.prev, frame.curr, frame.alpha, view.ball, this.views);
+    this.figures.forEach((f, i) => f.update(this.views[i], frame.fresh ? 0 : gameDt));
+    this.nets.update(view.ball.position, gameDt);
+    this.trail.update(view.ball.position, gameDt, view.camera.position);
+    this.marker.visible = false;
+    this.director.update({ player: null, ball: view.ball.position, attackDir: 1 }, dt, gameDt);
+    this.hud.setReplay(this.replay.caption);
+  }
+
+  /** Start a clip's footage: fresh animation and nets, and the replay camera on its goal. */
+  private cutTo(clip: Clip): void {
+    for (const f of this.figures) f.reset();
+    this.nets.clear();
+    if (clip.end === 0) {
+      this.director.back();
+    } else {
+      // Behind the goal for a goal through the middle, the reverse angle for one in a corner.
+      const last = clip.frames[clip.frames.length - 1].ball.pos;
+      this.director.replay(clip.end, Math.abs(last.z) < 0.8 ? 'behind' : 'reverse');
+    }
+  }
+
+  private endReplay(): void {
+    this.replay.stop();
+    for (const f of this.figures) f.reset();
+    this.nets.clear();
+    this.hud.setReplay(null);
+    // Keys pressed to skip it mustn't reach the players.
+    this.keyboard.clearTaps();
+    this.accumulator = 0;
+    if (this.sim.match.over) this.director.fullTime();
+    else this.director.back();
+  }
+
+  /** R: the last few seconds again (or, at full time, the highlights). */
+  private replayNow(): void {
+    if (this.sim.match.over && this.highlights.length > 0) {
+      this.replay.play(this.highlights, TUNING.replay.highlightSpeed);
+      return;
+    }
+    const clip = this.recorder.last(TUNING.replay.instant, 'Last play');
+    if (clip) this.replay.play([clip], TUNING.replay.speed);
+  }
+
+  /** Remember this step for replays. */
+  private recordStep(): void {
+    const { sim } = this;
+    const owner = sim.handling.holder ?? sim.possession.owner;
+    this.recorder.capture(sim.curr, owner === null ? null : sim.players[owner].team);
+  }
+
+  /** Once a goal's live cuts are over, its replay; at full time, the highlights. */
+  private startReplays(gameDt: number): void {
+    const p = this.pendingReplay;
+    if (p && (p.wait -= gameDt) <= 0) {
+      this.pendingReplay = null;
+      const clip = this.recorder.goal(p.tick, p.team, p.end, p.caption);
+      if (clip) {
+        this.highlights.push(clip);
+        this.replay.play([clip], TUNING.replay.speed);
+      }
+    }
+    if (this.highlightsIn !== null && (this.highlightsIn -= gameDt) <= 0) {
+      this.highlightsIn = null;
+      if (this.highlights.length > 0) this.replay.play(this.highlights, TUNING.replay.highlightSpeed);
+    }
   }
 
   /** React to what happened in the simulation (status text now; sound and animation later). */
@@ -168,6 +280,10 @@ export class Game {
         this.hud.setScore(e.score[0], e.score[1]);
         const scorer = e.scorer;
         this.director.goal(e.end, scorer === null ? null : () => this.figures[scorer].object.position);
+        const clock = this.sim.match.clock;
+        const minute = Math.floor(((clock.half - 1) * TUNING.match.halfLength + clock.elapsed) / 60) + 1;
+        const who = scorer === null ? 'own goal' : `${TEAMS[this.sim.players[scorer].team].short} ${ROLE_NAMES[this.sim.players[scorer].spec.role]}`;
+        this.pendingReplay = { wait: TUNING.replay.delay, tick: this.sim.curr.tick, team: e.team, end: e.end, caption: `${scoreLine(e.score)} · ${who}, ${minute}′` };
         this.hud.flash('GOAL!', TUNING.match.goalDelay);
         break;
       }
@@ -199,6 +315,7 @@ export class Game {
         break;
       case 'fullTime':
         this.director.fullTime();
+        this.highlightsIn = 2.5;
         this.hud.flash(`Full time · ${scoreLine(e.score)}`, Infinity);
         break;
     }

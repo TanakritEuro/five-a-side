@@ -17,6 +17,8 @@ import { SkinnedFigure, type ClipBlend, type FigureTemplate } from './skinned';
 export interface Figure {
   readonly object: THREE.Group;
   update(view: PlayerView, dt: number): void;
+  /** Forget the animation's history (stride, moods): a cut to other footage. */
+  reset(): void;
 }
 
 /** Skin tones, given out by player id (invented players, a mix of faces). */
@@ -58,7 +60,14 @@ abstract class RiggedFigure implements Figure {
     }
   }
 
+  /** Running, actions and moods. */
+  protected animator = new Animator();
+
   abstract update(view: PlayerView, dt: number): void;
+
+  reset(): void {
+    this.animator = new Animator();
+  }
 
   /** Show `pose`, with a recorded clip blended over it. */
   protected show(pose: Pose, clip?: ClipBlend): void {
@@ -69,8 +78,6 @@ abstract class RiggedFigure implements Figure {
 
 /** An outfield player. */
 export class Footballer extends RiggedFigure {
-  private readonly animator = new Animator();
-
   constructor(template: FigureTemplate | null, kit: Kit) {
     super(template, kit, DEFAULT_DIMS);
   }
@@ -93,7 +100,6 @@ export class Footballer extends RiggedFigure {
  */
 export class KeeperFigure extends RiggedFigure {
   private clock = 0;
-  private readonly animator = new Animator();
 
   constructor(template: FigureTemplate | null, kit: Kit) {
     super(template, kit, {
