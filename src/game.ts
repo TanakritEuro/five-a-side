@@ -1,6 +1,6 @@
 import type * as THREE from 'three';
 import { describeOutcome } from './ball/outcome';
-import { BroadcastCamera } from './camera';
+import { Director } from './camera/director';
 import { TUNING, type LevelName } from './config';
 import { PHYSICS_STEP } from './constants';
 import { DebugOverlay, StatsOverlay } from './debug';
@@ -33,7 +33,7 @@ export interface GameOptions {
   difficulty: LevelName;
 }
 
-const HINT = 'WASD: move · Shift: sprint · J: pass / switch · K: shoot (hold) / tackle · L: call a press';
+const HINT = 'WASD: move · Shift: sprint · J: pass / switch · K: shoot (hold) / tackle · L: call a press · C: camera';
 const RESTART_NAMES: Record<RestartKind, string> = {
   kickoff: 'Kick-off',
   kickIn: 'Kick-in',
@@ -50,7 +50,7 @@ const TACKLE_NAMES: Record<TackleOutcome, string> = { won: 'Won it!', missed: 'M
  */
 export class Game {
   private readonly view: GameScene;
-  private readonly broadcast: BroadcastCamera;
+  private readonly director: Director;
   private readonly keyboard = new Keyboard();
   private readonly hud: Hud;
   private readonly figures: Figure[];
@@ -88,7 +88,11 @@ export class Game {
     // You start on the home pivot, who takes the first kick-off.
     const pivot = sim.players.findIndex((p) => p.team === 0 && p.spec.role === 'pivot');
     this.control = options.aiVsAi ? null : new HumanControl(0, sim.match.taker ?? pivot);
-    this.broadcast = new BroadcastCamera(this.view.camera);
+    this.director = new Director(this.view.camera);
+    // Keys for the presentation rather than the players: C switches camera.
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyC' && !e.repeat) this.director.toggleMode();
+    });
     this.hud = new Hud(hudRoot, HINT);
     this.figures = sim.players.map((p) => {
       const kit = kitFor(TEAMS[p.team], p.id, p.keeper !== null);
@@ -145,7 +149,8 @@ export class Game {
     this.marker.visible = me !== null;
     if (me) this.marker.position.set(me.position.x, 0.02, me.position.z);
     // With nobody to follow, the camera follows the ball.
-    this.broadcast.update(me?.position ?? view.ball.position, view.ball.position, dt);
+    const team = this.control?.team ?? 0;
+    this.director.update({ player: me?.position ?? null, ball: view.ball.position, attackDir: sim.attackDir(team) }, dt, dt * this.options.timescale);
     this.hud.update(controlled === null ? null : sim.players[controlled], dt, shotPower);
     this.hud.setClock(sim.match.clock.half, TUNING.match.halfLength - sim.match.clock.elapsed);
     this.debug?.update(sim, this.figures.map((f) => f.object), controlled);
@@ -159,10 +164,18 @@ export class Game {
   private onEvent(e: SimEvent): void {
     if (e.type === 'kick') this.debug?.showPath(e.path);
     switch (e.type) {
-      case 'goal':
+      case 'goal': {
         this.hud.setScore(e.score[0], e.score[1]);
+        const scorer = e.scorer;
+        this.director.goal(e.end, scorer === null ? null : () => this.figures[scorer].object.position);
         this.hud.flash('GOAL!', TUNING.match.goalDelay);
         break;
+      }
+      case 'woodwork': {
+        const v = this.sim.ball.linvel();
+        this.director.shake(Math.hypot(v.x, v.y, v.z));
+        break;
+      }
       case 'shot':
         // Arrives after the goal event for the same shot, so "GOAL! In off the post" wins.
         this.hud.flash(describeOutcome(e.outcome), e.outcome.kind === 'goal' ? TUNING.match.goalDelay : 2);
@@ -171,6 +184,7 @@ export class Game {
         this.hud.flash(e.restart.kind === 'kickIn' ? 'Over the netting · Kick-in' : 'Over the netting · Goal clearance', TUNING.match.outDelay);
         break;
       case 'restart':
+        this.director.back();
         this.hud.flash(RESTART_NAMES[e.restart.kind], 1.5);
         break;
       case 'foul':
@@ -184,6 +198,7 @@ export class Game {
         this.hud.flash(`Half time · ${scoreLine(e.score)}`, TUNING.match.halfTimePause);
         break;
       case 'fullTime':
+        this.director.fullTime();
         this.hud.flash(`Full time · ${scoreLine(e.score)}`, Infinity);
         break;
     }

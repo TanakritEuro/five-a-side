@@ -15,7 +15,10 @@ Goal: it feels like a game, not a test bench. The game gets:
 Most of it is ported from `../penalty-shootout`. The simulation changes only for the
 shootout and a configurable match length.
 
-## Scope decisions (to confirm)
+## Scope decisions
+
+Decided with you: automatic goal replays plus R; a cup (no league); shootouts of three
+each then sudden death; gamepad and touch controls.
 
 - **Replays.** Every goal is followed by an automatic replay (about 6 s, slowed down,
   skippable with any key or button), and R replays the last few seconds at any time. At

@@ -494,14 +494,32 @@ export const TUNING = {
   },
   camera: {
     /** Broadcast camera: height and distance back from the near touchline (m). */
-    height: 15,
-    distance: 30,
-    fov: 40,
+    height: 13,
+    distance: 24,
+    fov: 34,
     /** Weight of the ball (vs the controlled player) in the point the camera follows. */
     ballWeight: 0.5,
-    /** How far the camera pans along the pitch towards that point (0 = fixed, 1 = locked on). */
-    follow: 0.75,
+    /** The camera pans until this far (m) beyond each end wall reaches the edge of the picture. */
+    endMargin: 2,
     /** Smoothing: fraction of the remaining gap closed per second (higher = snappier). */
     lag: 4,
+  },
+  director: {
+    /**
+     * Action camera (C): this far behind the play, up, out towards the near touchline (m),
+     * looking this far ahead of it; never closer than `inside` to the boards.
+     */
+    action: { fov: 50, back: 8, height: 5.5, side: 7, ahead: 4, ballWeight: 0.5, lag: 3, inside: 1.5 },
+    /**
+     * After a goal: a low camera beside the net for `netTime` game seconds (this far back
+     * from the line, up, and out to the side), then one circling the scorer.
+     */
+    goal: { fov: 38, netTime: 1.1, netBack: 3, netHeight: 2.8, netSide: 7.5, orbitRadius: 4.2, orbitHeight: 1.7, orbitStart: 0.6, orbitSpeed: 0.35 },
+    /** Full time: the whole pitch from high up. */
+    wide: { fov: 45, height: 26, distance: 34 },
+    /** Replays: high behind the goal, or low beside its line on the near side. */
+    replay: { fov: 42, behind: 6, behindHeight: 5, sideBack: 3, sideHeight: 1.4, side: 12 },
+    /** Shake on the woodwork: peak angle (rad) at `referenceSpeed` (m/s), decay (s) and frequency (Hz). */
+    shake: { angle: 0.012, referenceSpeed: 25, decay: 0.22, frequency: 24 },
   },
 };
