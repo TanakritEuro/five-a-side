@@ -14,7 +14,6 @@ import {
   PENALTY_SPOT_DISTANCE,
   PITCH_LENGTH,
   PITCH_WIDTH,
-  PLAYER_HEIGHT,
   PLAYER_RADIUS,
   POST_RADIUS,
 } from './constants';
@@ -256,34 +255,6 @@ function createGoal(end: 1 | -1): THREE.Group {
     side.position.set(midX, topY / 2, z);
     group.add(side);
   }
-  return group;
-}
-
-/** Placeholder player: a capsule in the team's shirt colour with a head and a facing marker. */
-export function createPlayerMesh(shirt: number, shorts: number): THREE.Group {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(PLAYER_RADIUS, PLAYER_HEIGHT - 2 * PLAYER_RADIUS - 0.25, 6, 12),
-    new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.7 }),
-  );
-  body.position.y = (PLAYER_HEIGHT - 0.25) / 2;
-  body.castShadow = true;
-  const legs = new THREE.Mesh(
-    new THREE.CylinderGeometry(PLAYER_RADIUS * 0.85, PLAYER_RADIUS * 0.7, 0.55, 12),
-    new THREE.MeshStandardMaterial({ color: shorts, roughness: 0.7 }),
-  );
-  legs.position.y = 0.55;
-  legs.castShadow = true;
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.13, 16, 10),
-    new THREE.MeshStandardMaterial({ color: 0xc99a74, roughness: 0.8 }),
-  );
-  head.position.y = PLAYER_HEIGHT - 0.12;
-  head.castShadow = true;
-  // A small nose so you can see which way the player faces (+X in the group's frame).
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.06), head.material);
-  nose.position.set(0.13, PLAYER_HEIGHT - 0.13, 0);
-  group.add(body, legs, head, nose);
   return group;
 }
 

@@ -11,7 +11,7 @@ import { IDLE, type Command } from './command';
 import { dribbleMove, playBall } from './dribble';
 import type { SimEvent } from './events';
 import { Handling } from './handling';
-import { tryKick, updateKickButtons } from './kick';
+import { chargePower, tryKick, updateKickButtons } from './kick';
 import { stepLocomotion } from './locomotion';
 import { Match, type MatchAction } from './match';
 import { AVERAGE, createPlayer, integratePlayer, syncBody, teleportBody, type Player, type PlayerSpec } from './player';
@@ -35,6 +35,9 @@ export interface SimOptions {
   kickoff?: boolean;
 }
 
+/** Something a player did with the ball or their body, for animation. */
+export type ActionKind = 'pass' | 'shot' | 'touch' | 'receive' | 'deflect' | 'tackle' | 'challenge' | 'catch' | 'parry' | 'throw' | 'roll';
+
 export interface PlayerSnapshot {
   x: number;
   z: number;
@@ -43,10 +46,27 @@ export interface PlayerSnapshot {
   y: number;
   lean: number;
   arms: number;
+  /** Ground speed (m/s), and whether they're sprinting. */
+  speed: number;
+  sprinting: boolean;
+  /** Power (0–1) of a shot being charged, or 0. */
+  charge: number;
+  /** Seconds into a tackle's lunge, or −1 if they aren't lunging. */
+  tackle: number;
+  /** A keeper with the ball in their hands. */
+  holding: boolean;
+  /** The last thing they did, and the `Snapshot.tick` of the first snapshot after it. */
+  action: { kind: ActionKind; tick: number } | null;
 }
 
-/** What the renderer needs from one step, so it can interpolate between two of them. */
+/**
+ * What the renderer needs from one step, so it can interpolate between two of them, and
+ * animate the players (M6's replays play these back, so everything an animation needs is
+ * in here, not read from the players).
+ */
 export interface Snapshot {
+  /** Steps taken so far: this is the state after that many. */
+  tick: number;
   ball: { pos: Vec3; rot: Quat };
   players: PlayerSnapshot[];
 }
@@ -89,6 +109,8 @@ export class Sim {
   readonly keeperLevels: readonly [KeeperLevel, KeeperLevel];
   /** The ball's velocity at the start of the current step's physics. */
   private incoming: Vec3 = { x: 0, y: 0, z: 0 };
+  /** Each player's last action, for the snapshots. */
+  private readonly actions: ({ kind: ActionKind; tick: number } | null)[] = [];
   /** Shoulder challenges in progress last step (carrier and challenger ids, as "carrier:challenger"). */
   private challenges = new Set<string>();
 
@@ -156,6 +178,36 @@ export class Sim {
     events.push({ type: 'foul', player: p.id, against: victim.id, restart });
   }
 
+  /** Remember what each player did this step, for the animations (nothing in the sim reads it). */
+  private noteActions(events: readonly SimEvent[], holderBefore: number | null): void {
+    // Stamped with the tick of the snapshot that first shows it: zero seconds ago there.
+    const tick = this.tick + 1;
+    const set = (id: number, kind: ActionKind) => (this.actions[id] = { kind, tick });
+    for (const e of events) {
+      switch (e.type) {
+        case 'kick':
+          if (e.player === holderBefore) set(e.player, e.path.points[0].y > 0.5 ? 'throw' : 'roll');
+          else set(e.player, e.kind === 'shoot' ? 'shot' : 'pass');
+          break;
+        case 'touch':
+          if (e.kind === 'receive') set(e.player, this.handling.holder === e.player ? 'catch' : 'receive');
+          // A touch or deflection doesn't hide something bigger in the same step (a challenge, a parry).
+          else if (this.actions[e.player]?.tick !== tick) set(e.player, e.kind === 'dribble' ? 'touch' : 'deflect');
+          break;
+        case 'save':
+          set(e.player, e.caught ? 'catch' : 'parry');
+          break;
+        case 'tackle':
+          set(e.player, 'tackle');
+          break;
+        case 'challenge':
+          set(e.carrier, 'challenge');
+          set(e.challenger, 'challenge');
+          break;
+      }
+    }
+  }
+
   /** Report shoulder challenges as they begin. */
   private noteChallenges(challenges: readonly Challenge[], events: SimEvent[]): void {
     const now = new Set<string>();
@@ -201,6 +253,7 @@ export class Sim {
     const dt = PHYSICS_STEP;
     const { world, events: queue } = this.physics;
     const match = this.match;
+    const holderBefore = this.handling.holder;
 
     this.possession.update(this.players, this.ball.translation(), dt);
     // Someone has it: the pass (if there was one) is over.
@@ -304,6 +357,7 @@ export class Sim {
       }
     }
 
+    this.noteActions(events, holderBefore);
     this.tick++;
     this.writeSnapshot(this.curr);
     if (this.teleported) {
@@ -419,7 +473,21 @@ export class Sim {
   private emptySnapshot(): Snapshot {
     return {
       ball: { pos: { x: 0, y: 0, z: 0 }, rot: { x: 0, y: 0, z: 0, w: 1 } },
-      players: this.players.map(() => ({ x: 0, z: 0, facing: 0, y: 0, lean: 0, arms: 0 })),
+      tick: 0,
+      players: this.players.map(() => ({
+        x: 0,
+        z: 0,
+        facing: 0,
+        y: 0,
+        lean: 0,
+        arms: 0,
+        speed: 0,
+        sprinting: false,
+        charge: 0,
+        tackle: -1,
+        holding: false,
+        action: null,
+      })),
     };
   }
 
@@ -428,14 +496,29 @@ export class Sim {
     const r = this.ball.rotation();
     Object.assign(s.ball.pos, { x: p.x, y: p.y, z: p.z });
     Object.assign(s.ball.rot, { x: r.x, y: r.y, z: r.z, w: r.w });
+    s.tick = this.tick;
     this.players.forEach((pl, i) => {
       const pose = pl.keeper?.pose;
-      Object.assign(s.players[i], { x: pl.pos.x, z: pl.pos.z, facing: pl.facing, y: pose?.y ?? 0, lean: pose?.lean ?? 0, arms: pose?.arms ?? 0 });
+      Object.assign(s.players[i], {
+        x: pl.pos.x,
+        z: pl.pos.z,
+        facing: pl.facing,
+        y: pose?.y ?? 0,
+        lean: pose?.lean ?? 0,
+        arms: pose?.arms ?? 0,
+        speed: pl.speed,
+        sprinting: pl.sprinting,
+        charge: chargePower(pl),
+        tackle: pl.tackle?.kind === 'lunge' ? pl.tackle.elapsed : -1,
+        holding: this.handling.holder === pl.id,
+        action: this.actions[i] ?? null,
+      });
     });
   }
 }
 
 function copySnapshot(from: Snapshot, to: Snapshot): void {
+  to.tick = from.tick;
   Object.assign(to.ball.pos, from.ball.pos);
   Object.assign(to.ball.rot, from.ball.rot);
   from.players.forEach((p, i) => Object.assign(to.players[i], p));

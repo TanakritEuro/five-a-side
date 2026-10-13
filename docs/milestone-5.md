@@ -5,7 +5,10 @@ run, sprint, turn, dribble, pass, shoot, receive, tackle, barge and celebrate, a
 keepers dive, catch and throw, all timed to what the simulation does. Each team wears
 its kit. The simulation doesn't change: animation is presentation, read from snapshots.
 
-## Scope decisions (to confirm)
+## Scope decisions
+
+Decided with you: the existing clips plus procedural poses (no download), the
+region-coloured kit, full goal celebrations, and no shirt numbers yet.
 
 - **Animation source.** The penalty game's trimmed `mannequin.glb` has three clips: idle,
   jog and dance. I'd use the jog clip for jogging, the idle clip for standing and the dance

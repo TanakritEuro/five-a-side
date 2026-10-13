@@ -5,9 +5,10 @@ import { TUNING, type LevelName } from './config';
 import { PHYSICS_STEP } from './constants';
 import { DebugOverlay, StatsOverlay } from './debug';
 import { Keyboard } from './input/keyboard';
-import { interpolate } from './render/interpolate';
-import { KeeperMesh } from './render/keeper';
-import { createMarker, createPlayerMesh, createScene, type GameScene } from './scene';
+import { Footballer, KeeperFigure, kitFor, type Figure } from './characters/footballer';
+import { loadFigure, type FigureTemplate } from './characters/skinned';
+import { interpolate, type PlayerView } from './render/interpolate';
+import { createMarker, createScene, type GameScene } from './scene';
 import type { Command } from './sim/command';
 import type { SimEvent } from './sim/events';
 import type { TackleOutcome } from './sim/tackle';
@@ -52,7 +53,9 @@ export class Game {
   private readonly broadcast: BroadcastCamera;
   private readonly keyboard = new Keyboard();
   private readonly hud: Hud;
-  private readonly playerMeshes: THREE.Object3D[];
+  private readonly figures: Figure[];
+  /** Each player as drawn this frame. */
+  private readonly views: PlayerView[] = [];
   private readonly marker: THREE.Object3D;
   private readonly debug: DebugOverlay | null;
   private readonly stats: StatsOverlay | null;
@@ -69,7 +72,9 @@ export class Game {
       kickoff: true,
       levels: ['normal', options.difficulty],
     });
-    return new Game(canvas, hudRoot, sim, options);
+    // Quaternius' Mannequin (CC0, see ASSETS.md); the rig's own capsule figures stand in if it fails to load.
+    const template = await loadFigure(`${import.meta.env.BASE_URL}models/mannequin.glb`);
+    return new Game(canvas, hudRoot, sim, options, template);
   }
 
   private constructor(
@@ -77,6 +82,7 @@ export class Game {
     hudRoot: HTMLElement,
     readonly sim: Sim,
     private readonly options: GameOptions,
+    template: FigureTemplate | null,
   ) {
     this.view = createScene(canvas);
     // You start on the home pivot, who takes the first kick-off.
@@ -84,11 +90,11 @@ export class Game {
     this.control = options.aiVsAi ? null : new HumanControl(0, sim.match.taker ?? pivot);
     this.broadcast = new BroadcastCamera(this.view.camera);
     this.hud = new Hud(hudRoot, HINT);
-    this.playerMeshes = sim.players.map((p) => {
-      const team = TEAMS[p.team];
-      const mesh = p.keeper ? new KeeperMesh(team.keeperShirt, team.shorts) : createPlayerMesh(team.shirt, team.shorts);
-      this.view.scene.add(mesh);
-      return mesh;
+    this.figures = sim.players.map((p) => {
+      const kit = kitFor(TEAMS[p.team], p.id, p.keeper !== null);
+      const figure = p.keeper ? new KeeperFigure(template, kit) : new Footballer(template, kit);
+      this.view.scene.add(figure.object);
+      return figure;
     });
     this.marker = createMarker();
     this.view.scene.add(this.marker);
@@ -133,15 +139,16 @@ export class Game {
 
     const { sim, view } = this;
     const controlled = this.controlled;
-    interpolate(sim.prev, sim.curr, this.accumulator / PHYSICS_STEP, view.ball, this.playerMeshes);
-    const me = controlled === null ? null : this.playerMeshes[controlled];
+    interpolate(sim.prev, sim.curr, this.accumulator / PHYSICS_STEP, view.ball, this.views);
+    this.figures.forEach((f, i) => f.update(this.views[i], dt * this.options.timescale));
+    const me = controlled === null ? null : this.figures[controlled].object;
     this.marker.visible = me !== null;
     if (me) this.marker.position.set(me.position.x, 0.02, me.position.z);
     // With nobody to follow, the camera follows the ball.
     this.broadcast.update(me?.position ?? view.ball.position, view.ball.position, dt);
     this.hud.update(controlled === null ? null : sim.players[controlled], dt, shotPower);
     this.hud.setClock(sim.match.clock.half, TUNING.match.halfLength - sim.match.clock.elapsed);
-    this.debug?.update(sim, this.playerMeshes, controlled);
+    this.debug?.update(sim, this.figures.map((f) => f.object), controlled);
 
     view.renderer.render(view.scene, view.camera);
     this.stats?.update(view.renderer, dt);
